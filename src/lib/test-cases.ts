@@ -1,7 +1,7 @@
 import { fixtureById } from "@/data/fixtures";
 import type { InvoiceLine } from "@/data/types";
 import { evaluateLine, NEEDS_LEGAL_SAME_CLASS_NOTE, type NeedKind, type PriceResult, type ResultStatus } from "./pricing-engine";
-import { buildContext, fixtureState, type FixtureState } from "./term-state";
+import { buildContext, fixtureState, withOverrideConfirmed, type FixtureState } from "./term-state";
 
 /**
  * PRD v0.4.2 sections 8.1 and 8.2. Single source of expected outcomes, shared by the
@@ -125,7 +125,7 @@ export interface TestRun {
 
 export function contextFor(tc: Pick<TestCase, "state" | "unconfirmedOverrides">) {
   const { states, rulings } = fixtureState(tc.state);
-  for (const id of tc.unconfirmedOverrides ?? []) states[id] = { ...states[id]!, overrideVerified: false };
+  for (const id of tc.unconfirmedOverrides ?? []) states[id] = withOverrideConfirmed(states[id]!, false);
   return buildContext(states, rulings);
 }
 

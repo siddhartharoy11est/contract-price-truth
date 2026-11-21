@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TEST_CASES, runTestCase } from "./test-cases";
 import { evaluateLine, permittedAdjustedRate, resolveGrade, type EngineContext } from "./pricing-engine";
-import { buildContext, fixtureContext, statesWithVerified, type FixtureState } from "./term-state";
+import { buildContext, fixtureContext, statesWithVerified, withOverrideConfirmed, type FixtureState } from "./term-state";
 import { fixtureById } from "@/data/fixtures";
 import type { EngineTerm, InvoiceLine } from "@/data/types";
 import { formatINR, parseRupees, amountFor } from "./money";
@@ -138,7 +138,7 @@ describe("override links", () => {
     expect(before.status).toBe("Awaiting verification");
     expect(before.explanation.join(" ")).toContain("Relationship between T01 and T02 not confirmed");
     expect(before.expectedPaise).toBeNull();
-    states["T02"] = { ...states["T02"]!, overrideVerified: true };
+    states["T02"] = withOverrideConfirmed(states["T02"]!, true);
     const after = evaluateLine(line, buildContext(states, {}));
     expect(after.status).toBe("Potential discrepancy");
     expect(after.differencePaise).toBe(1500000);

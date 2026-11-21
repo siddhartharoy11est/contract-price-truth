@@ -9,6 +9,7 @@ import { useDemo } from "@/lib/demo-store";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { currentValue } from "@/lib/term-state";
 
 export const Route = createFileRoute("/documents/$docId")({
   loader: ({ params }) => {
@@ -153,7 +154,7 @@ function DocumentPage() {
                         <p className="mt-1.5 text-xs text-muted-foreground">
                           {t.grade} · {t.location === "all" ? "All centers" : t.location} ·{" "}
                           <span className="font-mono text-foreground">
-                            {formatINR(ts?.editedRatePaise ?? t.ratePaise)}/h
+                            {formatINR(Number(currentValue(t, ts, "ratePaise")))}/h
                           </span>{" "}
                           from {t.effectiveFrom ? formatDate(t.effectiveFrom) : "unknown"}
                         </p>

@@ -6,6 +6,7 @@ import { DOCUMENTS, SUPPLIERS, TERMS, supplierById } from "@/data/seed";
 import { useDemo } from "@/lib/demo-store";
 import { formatDate } from "@/lib/dates";
 import { formatINR } from "@/lib/money";
+import { currentValue } from "@/lib/term-state";
 
 export const Route = createFileRoute("/suppliers/$supplierId")({
   loader: ({ params }) => {
@@ -144,7 +145,7 @@ function SupplierWorkspace() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {term.grade} · {term.location === "all" ? "All centers" : term.location} ·{" "}
                         <span className="font-mono text-foreground">
-                          {formatINR(ts.editedRatePaise ?? term.ratePaise ?? 0)}/h
+                          {formatINR(Number(currentValue(term, ts, "ratePaise") ?? 0))}/h
                         </span>
                         {term.effectiveFrom ? ` from ${formatDate(term.effectiveFrom)}` : ""}
                       </p>

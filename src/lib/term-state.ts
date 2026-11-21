@@ -1,5 +1,5 @@
 import { CONFLICTS, DOCUMENTS, ROLE_MAPS, SUPPLIERS, TERMS } from "@/data/seed";
-import type { EngineTerm, Reading, RoleId, TermStatus } from "@/data/types";
+import type { EngineTerm, Reading, RoleId, SeedTerm, TermStatus } from "@/data/types";
 import type { EngineContext } from "./pricing-engine";
 
 export interface TermHistoryEntry {
@@ -10,20 +10,75 @@ export interface TermHistoryEntry {
   reason?: string;
 }
 
+/**
+ * Override link from this term to the term it overrides within its own role, location and
+ * dates. It counts only when `confirmed` is explicitly true. Verifying the amending term does
+ * not confirm the link (PRD 6.2, 6.3, M5.3).
+ */
+export interface OverrideLink {
+  target: string;
+  confirmed: boolean;
+  by?: string;
+  at?: string;
+}
+
+export type EditableField = "ratePaise" | "grade" | "location" | "effectiveFrom" | "effectiveTo";
+export type FieldValue = string | number | null;
+
+/** One correction. The AI original stays beside it and is never edited (PRD 6.5). */
+export interface Correction {
+  field: EditableField;
+  aiOriginal: FieldValue;
+  from: FieldValue;
+  to: FieldValue;
+  /** Quote the correction relies on. Must be text from the cited document. */
+  sourceQuote: string;
+  /** Whether the value is found in the term quote or the source quote (PRD 6.5 rule 3). */
+  supported: boolean;
+  /** Reviewer confirmed the source does not restrict the rate to particular locations. */
+  allLocationsConfirmed?: boolean;
+  reason: string;
+  by: string;
+  at: string;
+}
+
+export interface ClauseInterpretation {
+  choice: "Clear" | "Disputed";
+  question?: string;
+  by: string;
+  at: string;
+}
+
 export interface TermState {
   status: TermStatus;
-  /**
-   * Override link status for a term with `replaces`. The link is confirmed only when this is
-   * explicitly true. Verifying the amending term does not confirm the link (PRD 6.2, 6.3).
-   */
-  overrideVerified?: boolean;
-  editedRatePaise?: number;
+  /** Null when the reviewer removed the link. Undefined when the term has none. */
+  override?: OverrideLink | null;
+  edits?: Partial<Record<EditableField, FieldValue>>;
+  corrections?: Correction[];
+  interpretation?: ClauseInterpretation;
   secondReadDiffers?: boolean;
   history: TermHistoryEntry[];
 }
 
 export function initialTermStates(): Record<string, TermState> {
-  return Object.fromEntries(TERMS.map((t) => [t.id, { status: t.initialStatus, history: [] }]));
+  return Object.fromEntries(
+    TERMS.map((t) => {
+      const s: TermState = { status: t.initialStatus, history: [] };
+      if (t.replaces) s.override = { target: t.replaces, confirmed: false };
+      return [t.id, s];
+    }),
+  );
+}
+
+/** The AI original value of a field, from the seed. */
+export function aiOriginal(t: SeedTerm, field: EditableField): FieldValue {
+  return (t[field] ?? null) as FieldValue;
+}
+
+/** Current value of a field: the latest correction or the AI original. */
+export function currentValue(t: SeedTerm, s: TermState | undefined, field: EditableField): FieldValue {
+  const e = s?.edits;
+  return e && field in e ? (e[field] ?? null) : aiOriginal(t, field);
 }
 
 /** Combines seed terms with review state into the engine's input. Pure. */
@@ -31,14 +86,16 @@ export function buildEngineTerms(states: Record<string, TermState>): EngineTerm[
   return TERMS.map((t) => {
     const s = states[t.id];
     const doc = DOCUMENTS.find((d) => d.id === t.docId);
+    const link = s && "override" in s ? s.override : t.replaces ? { target: t.replaces, confirmed: false } : undefined;
     return {
       ...t,
+      ...(s?.edits ?? {}),
       status: s?.status ?? t.initialStatus,
-      ratePaise: s?.editedRatePaise ?? t.ratePaise,
       signed: doc?.signed ?? false,
       supplierId: doc?.supplierId,
-      overrideVerified: t.replaces ? s?.overrideVerified === true : undefined,
-    };
+      replaces: link?.target,
+      overrideVerified: link ? link.confirmed === true : undefined,
+    } as EngineTerm;
   });
 }
 
@@ -52,11 +109,17 @@ export function buildContext(
   return { terms: buildEngineTerms(states), conflicts: CONFLICTS, rulings, roleMaps: ROLE_MAPS, deliveryCenters };
 }
 
-/** A copy of the seed where the listed terms are Verified. Used by the test runner. */
+/** A copy of the seed where the listed terms are Verified. Override links stay unconfirmed. */
 export function statesWithVerified(ids: string[]): Record<string, TermState> {
   const s = initialTermStates();
   for (const id of ids) if (s[id]) s[id] = { ...s[id]!, status: "Verified" };
   return s;
+}
+
+/** Sets the confirmed flag of a term's override link. Used by fixture states and tests. */
+export function withOverrideConfirmed(s: TermState, confirmed: boolean): TermState {
+  if (!s.override) return s;
+  return { ...s, override: { ...s.override, confirmed } };
 }
 
 export type FixtureState = "SEED" | "VR" | "CR" | "RULED-A" | "RULED-B";
@@ -76,7 +139,7 @@ export function fixtureState(name: FixtureState): {
   if (name === "SEED") return { states: initialTermStates(), rulings: {} };
   const ids = name === "VR" ? RATE_TERMS_TO_VERIFY : [...RATE_TERMS_TO_VERIFY, ...CONFLICT_TERMS];
   const states = statesWithVerified(ids);
-  for (const id of RATE_TERMS_TO_VERIFY) states[id] = { ...states[id]!, overrideVerified: true };
+  for (const id of RATE_TERMS_TO_VERIFY) states[id] = withOverrideConfirmed(states[id]!, true);
   const rulings: Partial<Record<string, Reading>> =
     name === "RULED-A" ? { C1: "A" } : name === "RULED-B" ? { C1: "B" } : {};
   return { states, rulings };
