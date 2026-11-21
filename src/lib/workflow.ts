@@ -3,7 +3,8 @@
  * PRD v0.4.2: M5 (verification), M7.3 (versioned assessments), M9 and 6.10 (investigations).
  * The pricing engine still does every price selection and all arithmetic.
  */
-import { CONFLICTS, DOCUMENTS, TERMS } from "@/data/seed";
+import { CONFLICTS } from "@/data/seed";
+import { catalogOf, emptyUploads, type Uploads } from "./catalog";
 import type { InvoiceLine, Reading, RoleId, TermStatus } from "@/data/types";
 import {
   evaluateLine,
@@ -133,6 +134,8 @@ export interface WorkflowState {
   activity: ActivityEvent[];
   nextAssessmentNo: number;
   nextInvestigationNo: number;
+  /** Visitor uploads: suppliers, documents, live terms and extraction runs (Journey D). */
+  uploads: Uploads;
 }
 
 export class WorkflowError extends Error {}
@@ -153,6 +156,7 @@ export function seedWorkflow(): WorkflowState {
     activity: [],
     nextAssessmentNo: 1,
     nextInvestigationNo: 1,
+    uploads: emptyUploads(),
   };
 }
 
@@ -162,8 +166,13 @@ export function rulingReadings(
   return Object.fromEntries(Object.entries(rulings).map(([k, v]) => [k, v!.reading]));
 }
 
-export const contextOf = (ws: Pick<WorkflowState, "terms" | "rulings">): EngineContext =>
-  buildContext(ws.terms, rulingReadings(ws.rulings));
+export const contextOf = (
+  ws: Pick<WorkflowState, "terms" | "rulings"> & { uploads?: Uploads | undefined },
+): EngineContext => buildContext(ws.terms, rulingReadings(ws.rulings), ws.uploads);
+
+/** Seed plus uploads, with current edits applied to uploaded role maps. */
+export const catalogFor = (ws: Pick<WorkflowState, "terms"> & { uploads?: Uploads | undefined }) =>
+  catalogOf(ws.uploads, ws.terms);
 
 export function describeResult(r: PriceResult): string {
   if (r.status === "Potential discrepancy")
@@ -224,7 +233,7 @@ const sameLine = (a: InvoiceLine, b: InvoiceLine) => JSON.stringify(a) === JSON.
 
 const latestOf = (a: Assessment) => a.versions[a.versions.length - 1]!;
 
-function log(
+export function log(
   ws: WorkflowState,
   actor: Actor,
   text: string,
@@ -536,7 +545,8 @@ export function decide(
 
 // ---------- terms ----------
 
-const seedTerm = (id: string) => TERMS.find((t) => t.id === id) ?? fail(`Unknown term ${id}.`);
+const termOf = (ws: WorkflowState, id: string) =>
+  catalogFor(ws).terms.find((t) => t.id === id) ?? fail(`Unknown term ${id}.`);
 
 function setTerm(ws: WorkflowState, id: string, fn: (s: TermState) => TermState): WorkflowState {
   return { ...ws, terms: { ...ws.terms, [id]: fn(ws.terms[id]!) } };
@@ -550,10 +560,26 @@ const historyEntry = (actor: Actor, action: string, reason?: string) => ({
   ...(reason?.trim() ? { reason: reason.trim() } : {}),
 });
 
-export function isUnsigned(termId: string): boolean {
-  const t = seedTerm(termId);
-  const doc = DOCUMENTS.find((d) => d.id === t.docId);
+export function isUnsigned(termId: string, uploads?: Uploads): boolean {
+  const c = catalogOf(uploads);
+  const t = c.terms.find((x) => x.id === termId);
+  if (!t) return true;
+  const doc = c.documents.find((d) => d.id === t.docId);
   return !doc?.signed || t.initialStatus === "Ignored";
+}
+
+/** Required fields a rate term must have before it can be verified (PRD M3.5). */
+export function missingRateFields(ws: WorkflowState, termId: string): string[] {
+  const t = termOf(ws, termId);
+  if (t.kind !== "rate") return [];
+  const s = ws.terms[termId];
+  const labels: [EditableField, string][] = [
+    ["grade", "role"],
+    ["location", "location"],
+    ["ratePaise", "amount"],
+    ["effectiveFrom", "effective from"],
+  ];
+  return labels.filter(([f]) => currentValue(t, s, f) === null).map(([, l]) => l);
 }
 
 /** Corrections whose current value lacks source support. Verify stays disabled while any remain. */
@@ -564,17 +590,23 @@ export function unsupportedCorrections(s: TermState): Correction[] {
 }
 
 export function canVerify(ws: WorkflowState, termId: string): { ok: boolean; reason?: string } {
-  if (isUnsigned(termId))
+  if (isUnsigned(termId, ws.uploads))
     return {
       ok: false,
       reason: "Terms from unsigned documents are Ignored and cannot be verified.",
     };
-  const s = ws.terms[termId]!;
-  const missing = unsupportedCorrections(s);
+  const missing = missingRateFields(ws, termId);
   if (missing.length)
     return {
       ok: false,
-      reason: `Source support missing for ${missing.map((c) => c.field).join(", ")}. Add a supporting quote or save as Needs review.`,
+      reason: `Required value missing: ${missing.join(", ")}. Correct it from the document text first.`,
+    };
+  const s = ws.terms[termId]!;
+  const unsupported = unsupportedCorrections(s);
+  if (unsupported.length)
+    return {
+      ok: false,
+      reason: `Source support missing for ${unsupported.map((c) => c.field).join(", ")}. Add a supporting quote or save as Needs review.`,
     };
   return { ok: true };
 }
@@ -612,7 +644,7 @@ export function markNeedsReview(
   termId: string,
   reason: string,
 ): WorkflowState {
-  if (isUnsigned(termId)) fail("Terms from unsigned documents stay Ignored.");
+  if (isUnsigned(termId, ws.uploads)) fail("Terms from unsigned documents stay Ignored.");
   const next = setTerm(ws, termId, (s) => ({
     ...s,
     status: "Needs review",
@@ -636,18 +668,21 @@ export function correctField(
   value: FieldValue,
   opts: { sourceQuote: string; reason: string; allLocationsConfirmed?: boolean },
 ): WorkflowState {
-  const t = seedTerm(termId);
-  if (isUnsigned(termId)) fail("Terms from unsigned documents cannot be corrected or verified.");
+  const t = termOf(ws, termId);
+  if (isUnsigned(termId, ws.uploads))
+    fail("Terms from unsigned documents cannot be corrected or verified.");
   const quote = opts.sourceQuote.trim();
   if (!quote) fail("A correction needs a source quote.");
-  if (!quoteInDocument(t.docId, quote))
+  const catalog = catalogFor(ws);
+  if (!quoteInDocument(t.docId, quote, catalog.documents))
     fail("The source quote is not exact text from the cited document.");
   if (!opts.reason.trim()) fail("Give a reason for the correction.");
   const s = ws.terms[termId]!;
   const from = currentValue(t, s, field);
   if (from === value) fail("The value is unchanged.");
-  const doc = DOCUMENTS.find((d) => d.id === t.docId);
+  const doc = catalog.documents.find((d) => d.id === t.docId);
   const supported = valueSupported(field, value, [t.quote, quote], {
+    roleMaps: catalog.roleMaps,
     ...(doc ? { supplierId: doc.supplierId } : {}),
     ...(opts.allLocationsConfirmed !== undefined
       ? { allLocationsConfirmed: opts.allLocationsConfirmed }
@@ -692,10 +727,11 @@ export function setOverride(
   target: string | null,
   reason: string,
 ): WorkflowState {
-  if (isUnsigned(termId)) fail("Terms from unsigned documents cannot override another term.");
-  const t = seedTerm(termId);
+  if (isUnsigned(termId, ws.uploads))
+    fail("Terms from unsigned documents cannot override another term.");
+  const t = termOf(ws, termId);
   if (target) {
-    const other = seedTerm(target);
+    const other = termOf(ws, target);
     if (other.id === termId || other.kind !== "rate" || other.grade !== t.grade)
       fail("An override must point to another rate term for the same role.");
   }
@@ -744,10 +780,10 @@ export function reviewClause(
   choice: "Clear" | "Disputed",
   question = "",
 ): WorkflowState {
-  const t = seedTerm(termId);
+  const t = termOf(ws, termId);
   if (t.kind !== "clause" && t.kind !== "notice")
     fail("Only clauses and notices take an interpretation.");
-  if (isUnsigned(termId)) fail("Terms from unsigned documents cannot be verified.");
+  if (isUnsigned(termId, ws.uploads)) fail("Terms from unsigned documents cannot be verified.");
   if (choice === "Disputed" && !question.trim()) fail("Write the question for Legal.");
   let next = setTerm(ws, termId, (s) => ({
     ...s,

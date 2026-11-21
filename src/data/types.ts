@@ -5,6 +5,8 @@ export type Location = string;
 export type TermStatus = "Proposed" | "Verified" | "Needs review" | "Ignored";
 export type TermKind = "rate" | "clause" | "notice" | "draft";
 export type RoleId = "procurement" | "finance" | "legal";
+/** Where an extraction came from: the stored seed run, or a live run on an uploaded document. */
+export type ExtractionSource = "Stored" | "Live";
 export type Reading = "A" | "B";
 
 export interface Clause {
@@ -25,6 +27,11 @@ export interface ContractDocument {
   effectiveFrom: string | null;
   clauses: Clause[];
   note?: string;
+  /** Absent means Stored (seed). Uploaded documents are Live. */
+  source?: ExtractionSource;
+  fileName?: string;
+  uploadedAt?: string;
+  uploadedBy?: string;
 }
 
 export interface Supplier {
@@ -60,6 +67,11 @@ export interface SeedTerm {
   noticeDate?: string;
   statedCpiPct?: number;
   note?: string;
+  /** Absent means Stored (seed). Terms from a live run on an uploaded document are Live. */
+  source?: ExtractionSource;
+  unit?: string | null;
+  currency?: string | null;
+  runId?: string;
 }
 
 export interface ConflictReading {

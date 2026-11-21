@@ -10,7 +10,10 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { roleById } from "@/data/roles";
-import { CONFLICTS, TERMS } from "@/data/seed";
+import { CONFLICTS } from "@/data/seed";
+import type { Catalog } from "./catalog";
+import { addUploadedDocument, applyExtraction, type UploadInput } from "./uploads";
+import type { ExtractResponse } from "./extraction/guard";
 import type { InvoiceLine, Reading, RoleId } from "@/data/types";
 import { evaluateLine, type EngineContext, type PriceResult } from "./pricing-engine";
 import type { EditableField, FieldValue } from "./term-state";
@@ -52,6 +55,8 @@ interface Store {
   hydrated: boolean;
   state: DemoState;
   ctx: EngineContext;
+  /** Seed plus the visitor's uploads. */
+  catalog: Catalog;
   role: ReturnType<typeof roleById>;
   evaluate: (line: InvoiceLine) => PriceResult;
   setRole: (r: RoleId) => void;
@@ -78,6 +83,8 @@ interface Store {
   raiseInvestigation: (assessmentId: string) => string | null;
   decide: (investigationId: string, kind: wf.DecisionKind, reason: string) => boolean;
   saveLiveRead: (docId: string, rec: LiveReadRecord) => void;
+  uploadDocument: (input: UploadInput) => string | null;
+  recordExtraction: (docId: string, res: ExtractResponse) => string | null;
   markProgress: (key: keyof DemoState["progress"]) => void;
   setGuideDismissed: (v: boolean) => void;
   reset: () => void;
@@ -103,7 +110,12 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<DemoState>;
         const seed = defaultState();
-        setState({ ...seed, ...parsed, terms: { ...seed.terms, ...parsed.terms } });
+        setState({
+          ...seed,
+          ...parsed,
+          terms: { ...seed.terms, ...parsed.terms },
+          uploads: { ...seed.uploads, ...parsed.uploads },
+        });
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -116,6 +128,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   }, [state, hydrated]);
 
   const ctx = useMemo(() => wf.contextOf(state), [state]);
+  const catalog = useMemo(
+    () => wf.catalogFor(state),
+    [state.uploads, state.terms], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const role = roleById(state.role);
 
   const actor = useCallback((): wf.Actor => {
@@ -216,6 +232,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
     hydrated,
     state,
     ctx,
+    catalog,
     role,
     evaluate,
     setRole,
@@ -248,6 +265,16 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       }),
     decide: (id, kind, reason) => runOk((s, a) => wf.decide(s, a, id, kind, reason)),
     saveLiveRead,
+    uploadDocument: (input) =>
+      run((s, a) => {
+        const out = addUploadedDocument(s, a, input);
+        return { state: out.state, value: out.docId };
+      }),
+    recordExtraction: (docId, res) =>
+      run((s, a) => {
+        const out = applyExtraction(s, a, docId, res);
+        return { state: out.state, value: out.runId };
+      }),
     markProgress,
     setGuideDismissed,
     reset,
@@ -291,7 +318,8 @@ export function useInvestigations(): InvestigationRow[] {
 
 /** Derived counts used by the header metric, banners and the guided demo. */
 export function useDerived() {
-  const { state } = useDemo();
+  const { state, catalog } = useDemo();
+  const TERMS = catalog.terms;
   const rows = useInvestigations();
   return useMemo(() => {
     const countable = TERMS.filter((t) => t.initialStatus !== "Ignored");
@@ -346,5 +374,5 @@ export function useDerived() {
       conflictsWithLegal,
       rows,
     };
-  }, [state.terms, state.conflictCases, rows]);
+  }, [state.terms, state.conflictCases, rows, TERMS]);
 }

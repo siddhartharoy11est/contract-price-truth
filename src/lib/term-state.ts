@@ -1,4 +1,5 @@
-import { CONFLICTS, DOCUMENTS, ROLE_MAPS, SUPPLIERS, TERMS } from "@/data/seed";
+import { CONFLICTS, TERMS } from "@/data/seed";
+import { catalogOf, type Catalog, type Uploads } from "./catalog";
 import type { EngineTerm, Reading, RoleId, SeedTerm, TermStatus } from "@/data/types";
 import type { EngineContext } from "./pricing-engine";
 
@@ -86,10 +87,13 @@ export function currentValue(
 }
 
 /** Combines seed terms with review state into the engine's input. Pure. */
-export function buildEngineTerms(states: Record<string, TermState>): EngineTerm[] {
-  return TERMS.map((t) => {
+export function buildEngineTerms(
+  states: Record<string, TermState>,
+  catalog: Catalog = catalogOf(null),
+): EngineTerm[] {
+  return catalog.terms.map((t) => {
     const s = states[t.id];
-    const doc = DOCUMENTS.find((d) => d.id === t.docId);
+    const doc = catalog.documents.find((d) => d.id === t.docId);
     const link =
       s && "override" in s
         ? s.override
@@ -111,16 +115,15 @@ export function buildEngineTerms(states: Record<string, TermState>): EngineTerm[
 export function buildContext(
   states: Record<string, TermState>,
   rulings: Partial<Record<string, Reading>>,
+  uploads?: Uploads | null,
 ): EngineContext {
-  const deliveryCenters = Object.fromEntries(
-    SUPPLIERS.filter((x) => x.deliveryCenters).map((x) => [x.id, x.deliveryCenters!]),
-  );
+  const catalog = catalogOf(uploads, states);
   return {
-    terms: buildEngineTerms(states),
+    terms: buildEngineTerms(states, catalog),
     conflicts: CONFLICTS,
     rulings,
-    roleMaps: ROLE_MAPS,
-    deliveryCenters,
+    roleMaps: catalog.roleMaps,
+    deliveryCenters: catalog.deliveryCenters,
   };
 }
 

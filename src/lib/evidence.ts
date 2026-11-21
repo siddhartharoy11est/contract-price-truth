@@ -2,7 +2,8 @@
  * Evidence rules from PRD 6.5. Pure text checks: a value and a quote agree textually.
  * They cannot confirm the meaning is right; that remains check 1 of the human review.
  */
-import { docById, ROLE_MAPS } from "@/data/seed";
+import type { ContractDocument, RoleMapEntry } from "@/data/types";
+import { catalogOf } from "./catalog";
 import type { EditableField, FieldValue } from "./term-state";
 
 const MONTHS = [
@@ -23,10 +24,14 @@ const MONTHS = [
 export const normalizeWs = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /** Rule 2: a quote must be an exact substring of the document text after whitespace normalization. */
-export function quoteInDocument(docId: string, quote: string): boolean {
+export function quoteInDocument(
+  docId: string,
+  quote: string,
+  documents: ContractDocument[] = catalogOf(null).documents,
+): boolean {
   const q = normalizeWs(quote);
   if (!q) return false;
-  const doc = docById(docId);
+  const doc = documents.find((d) => d.id === docId);
   if (!doc) return false;
   return (
     doc.clauses.some((c) => normalizeWs(c.text).includes(q)) ||
@@ -63,7 +68,11 @@ export function valueSupported(
   field: EditableField,
   value: FieldValue,
   quotes: string[],
-  opts: { supplierId?: string; allLocationsConfirmed?: boolean } = {},
+  opts: {
+    supplierId?: string;
+    allLocationsConfirmed?: boolean;
+    roleMaps?: Record<string, RoleMapEntry[]>;
+  } = {},
 ): boolean {
   const texts = quotes.map((q) => normalizeWs(q).toLowerCase()).filter(Boolean);
   if (!texts.length || value === null || value === "") return false;
@@ -74,7 +83,8 @@ export function valueSupported(
   }
   if (field === "location" && value === "all") return opts.allLocationsConfirmed === true;
   if (field === "grade") {
-    const entry = ROLE_MAPS[opts.supplierId ?? "brighthire"]?.find((r) => r.grade === value);
+    const maps = opts.roleMaps ?? catalogOf(null).roleMaps;
+    const entry = maps[opts.supplierId ?? "brighthire"]?.find((r) => r.grade === value);
     const names = [String(value), ...(entry ? [entry.role, ...(entry.aliases ?? [])] : [])];
     return texts.some((t) => names.some((n) => t.includes(n.toLowerCase())));
   }
