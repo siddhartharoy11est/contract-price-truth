@@ -76,7 +76,11 @@ export function aiOriginal(t: SeedTerm, field: EditableField): FieldValue {
 }
 
 /** Current value of a field: the latest correction or the AI original. */
-export function currentValue(t: SeedTerm, s: TermState | undefined, field: EditableField): FieldValue {
+export function currentValue(
+  t: SeedTerm,
+  s: TermState | undefined,
+  field: EditableField,
+): FieldValue {
   const e = s?.edits;
   return e && field in e ? (e[field] ?? null) : aiOriginal(t, field);
 }
@@ -86,7 +90,12 @@ export function buildEngineTerms(states: Record<string, TermState>): EngineTerm[
   return TERMS.map((t) => {
     const s = states[t.id];
     const doc = DOCUMENTS.find((d) => d.id === t.docId);
-    const link = s && "override" in s ? s.override : t.replaces ? { target: t.replaces, confirmed: false } : undefined;
+    const link =
+      s && "override" in s
+        ? s.override
+        : t.replaces
+          ? { target: t.replaces, confirmed: false }
+          : undefined;
     return {
       ...t,
       ...(s?.edits ?? {}),
@@ -106,7 +115,13 @@ export function buildContext(
   const deliveryCenters = Object.fromEntries(
     SUPPLIERS.filter((x) => x.deliveryCenters).map((x) => [x.id, x.deliveryCenters!]),
   );
-  return { terms: buildEngineTerms(states), conflicts: CONFLICTS, rulings, roleMaps: ROLE_MAPS, deliveryCenters };
+  return {
+    terms: buildEngineTerms(states),
+    conflicts: CONFLICTS,
+    rulings,
+    roleMaps: ROLE_MAPS,
+    deliveryCenters,
+  };
 }
 
 /** A copy of the seed where the listed terms are Verified. Override links stay unconfirmed. */

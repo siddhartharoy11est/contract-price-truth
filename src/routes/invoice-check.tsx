@@ -90,7 +90,8 @@ function toLine(f: FormState): { line: InvoiceLine | null; errors: string[] } {
   if (isIsoDate(f.start) && isIsoDate(f.end) && f.end < f.start)
     errors.push("Service end date is before the start date.");
   const grade = f.gradeChoice === OTHER ? f.gradeText.trim() : f.gradeChoice;
-  if (f.gradeChoice === OTHER && !grade) errors.push("Type the role as written on the invoice, or choose Not stated.");
+  if (f.gradeChoice === OTHER && !grade)
+    errors.push("Type the role as written on the invoice, or choose Not stated.");
   const hours = parseHours(f.hours);
   if (hours === null || hours <= 0)
     errors.push("Hours must be a number above zero, for example 100 or 7.5.");
@@ -114,7 +115,15 @@ function toLine(f: FormState): { line: InvoiceLine | null; errors: string[] } {
   return { line, errors };
 }
 
-function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
+function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string | undefined;
+}) {
   return (
     <label className="block text-sm">
       <span className="eyebrow">{label}</span>
@@ -127,7 +136,15 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
 const selectClass = "h-9 w-full rounded-md border border-input bg-card px-3 text-sm";
 
 function InvoiceCheckPage() {
-  const { evaluate, state, saveCheck, supplyFact, requestReview, raiseInvestigation, markProgress } = useDemo();
+  const {
+    evaluate,
+    state,
+    saveCheck,
+    supplyFact,
+    requestReview,
+    raiseInvestigation,
+    markProgress,
+  } = useDemo();
   const rows = useInvestigations();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [fixtureId, setFixtureId] = useState<string | null>(null);
@@ -194,7 +211,10 @@ function InvoiceCheckPage() {
             check();
           }}
         >
-          <Field label="Load example (demo data)" hint="Examples fill the form only. They never change verification state.">
+          <Field
+            label="Load example (demo data)"
+            hint="Examples fill the form only. They never change verification state."
+          >
             <select
               className={selectClass}
               value={fixtureId ?? ""}
@@ -212,7 +232,9 @@ function InvoiceCheckPage() {
             <select
               className={selectClass}
               value={form.supplierId}
-              onChange={(e) => update({ supplierId: e.target.value, gradeChoice: "", gradeText: "", location: "" })}
+              onChange={(e) =>
+                update({ supplierId: e.target.value, gradeChoice: "", gradeText: "", location: "" })
+              }
             >
               {SUPPLIERS.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -223,14 +245,29 @@ function InvoiceCheckPage() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Service start">
-              <Input type="date" value={form.start} onChange={(e) => update({ start: e.target.value })} />
+              <Input
+                type="date"
+                value={form.start}
+                onChange={(e) => update({ start: e.target.value })}
+              />
             </Field>
             <Field label="Service end">
-              <Input type="date" value={form.end} onChange={(e) => update({ end: e.target.value })} />
+              <Input
+                type="date"
+                value={form.end}
+                onChange={(e) => update({ end: e.target.value })}
+              />
             </Field>
           </div>
-          <Field label="Role or grade" hint={roleMap.length ? undefined : "This supplier has no role map on file."}>
-            <select className={selectClass} value={form.gradeChoice} onChange={(e) => update({ gradeChoice: e.target.value })}>
+          <Field
+            label="Role or grade"
+            hint={roleMap.length ? undefined : "This supplier has no role map on file."}
+          >
+            <select
+              className={selectClass}
+              value={form.gradeChoice}
+              onChange={(e) => update({ gradeChoice: e.target.value })}
+            >
               <option value="">Not stated</option>
               {roleMap.map((r) => (
                 <option key={r.grade} value={r.grade}>
@@ -241,12 +278,23 @@ function InvoiceCheckPage() {
             </select>
           </Field>
           {form.gradeChoice === OTHER && (
-            <Field label="Role as written on invoice" hint="Matched only through the role map. Never guessed from the rate.">
-              <Input value={form.gradeText} onChange={(e) => update({ gradeText: e.target.value })} maxLength={80} />
+            <Field
+              label="Role as written on invoice"
+              hint="Matched only through the role map. Never guessed from the rate."
+            >
+              <Input
+                value={form.gradeText}
+                onChange={(e) => update({ gradeText: e.target.value })}
+                maxLength={80}
+              />
             </Field>
           )}
           <Field label="Delivery center">
-            <select className={selectClass} value={form.location} onChange={(e) => update({ location: e.target.value })}>
+            <select
+              className={selectClass}
+              value={form.location}
+              onChange={(e) => update({ location: e.target.value })}
+            >
               <option value="">Not stated</option>
               {centers.map((l) => (
                 <option key={l} value={l}>
@@ -258,17 +306,36 @@ function InvoiceCheckPage() {
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Hours">
-              <Input value={form.hours} onChange={(e) => update({ hours: e.target.value })} inputMode="decimal" className="font-mono" />
+              <Input
+                value={form.hours}
+                onChange={(e) => update({ hours: e.target.value })}
+                inputMode="decimal"
+                className="font-mono"
+              />
             </Field>
             <Field label="Billed ₹/h">
-              <Input value={form.billed} onChange={(e) => update({ billed: e.target.value })} inputMode="decimal" className="font-mono" />
+              <Input
+                value={form.billed}
+                onChange={(e) => update({ billed: e.target.value })}
+                inputMode="decimal"
+                className="font-mono"
+              />
             </Field>
             <Field label="PO ₹/h">
-              <Input value={form.po} onChange={(e) => update({ po: e.target.value })} inputMode="decimal" placeholder="Optional" className="font-mono" />
+              <Input
+                value={form.po}
+                onChange={(e) => update({ po: e.target.value })}
+                inputMode="decimal"
+                placeholder="Optional"
+                className="font-mono"
+              />
             </Field>
           </div>
           {errors.length > 0 && (
-            <ul className="space-y-1 rounded-md border border-danger/30 bg-danger-soft p-3 text-xs text-danger" role="alert">
+            <ul
+              className="space-y-1 rounded-md border border-danger/30 bg-danger-soft p-3 text-xs text-danger"
+              role="alert"
+            >
               {errors.map((e) => (
                 <li key={e}>{e}</li>
               ))}
@@ -284,8 +351,8 @@ function InvoiceCheckPage() {
             <div className="surface flex min-h-60 flex-col items-center justify-center gap-2 p-8 text-center">
               <p className="text-base font-semibold">No line checked yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                Load an example such as S01, or enter a line, then choose Check Against Contract.
-                Or open a saved check below.
+                Load an example such as S01, or enter a line, then choose Check Against Contract. Or
+                open a saved check below.
               </p>
             </div>
           ) : (
@@ -296,15 +363,22 @@ function InvoiceCheckPage() {
                 title={`${assessment.id}${assessment.fixtureId ? ` · ${assessment.fixtureId}` : ""}`}
                 meta={
                   <p className="text-xs text-muted-foreground">
-                    Saved check, version {latest.n} of {assessment.versions.length}, {formatTimestamp(latest.at)} by {latest.by}.
+                    Saved check, version {latest.n} of {assessment.versions.length},{" "}
+                    {formatTimestamp(latest.at)} by {latest.by}.
                   </p>
                 }
-                onSupplyLocation={(loc) => supplyFact(assessment.id, { kind: "location", value: loc })}
+                onSupplyLocation={(loc) =>
+                  supplyFact(assessment.id, { kind: "location", value: loc })
+                }
                 actions={
                   investigation ? (
                     <p className="flex flex-wrap items-center gap-2 text-sm">
                       Investigation{" "}
-                      <Link to="/findings" hash={investigation.investigation.id} className="font-mono text-primary underline">
+                      <Link
+                        to="/findings"
+                        hash={investigation.investigation.id}
+                        className="font-mono text-primary underline"
+                      >
                         {investigation.investigation.id}
                       </Link>
                       <span className="text-muted-foreground">{investigation.kind}</span>
@@ -366,7 +440,10 @@ export function VersionHistory({ assessment }: { assessment: Assessment }) {
               <span className="flex-1 text-xs text-muted-foreground">
                 {formatTimestamp(v.at)} · {v.by} · {v.trigger}
               </span>
-              <button className="text-xs font-medium text-primary hover:underline" onClick={() => setShown(shown === v.n ? null : v.n)}>
+              <button
+                className="text-xs font-medium text-primary hover:underline"
+                onClick={() => setShown(shown === v.n ? null : v.n)}
+              >
                 {shown === v.n ? "Hide" : "View"}
               </button>
             </div>
@@ -384,7 +461,8 @@ export function VersionHistory({ assessment }: { assessment: Assessment }) {
         <div className="mt-3 border-t pt-3 text-xs text-muted-foreground">
           {assessment.facts.map((f, i) => (
             <p key={i}>
-              {f.by} supplied {f.kind === "location" ? "delivery center" : "role"} {f.value} on {formatTimestamp(f.at)} (version {f.version})
+              {f.by} supplied {f.kind === "location" ? "delivery center" : "role"} {f.value} on{" "}
+              {formatTimestamp(f.at)} (version {f.version})
               {f.note ? `. Source note: ${f.note}` : ""}
             </p>
           ))}
@@ -394,7 +472,13 @@ export function VersionHistory({ assessment }: { assessment: Assessment }) {
   );
 }
 
-function SavedChecks({ openId, onOpen }: { openId: string | null; onOpen: (a: Assessment) => void }) {
+function SavedChecks({
+  openId,
+  onOpen,
+}: {
+  openId: string | null;
+  onOpen: (a: Assessment) => void;
+}) {
   const { state } = useDemo();
   const rows = useInvestigations();
   const list = useMemo(() => state.assessments, [state.assessments]);
@@ -419,19 +503,30 @@ function SavedChecks({ openId, onOpen }: { openId: string | null; onOpen: (a: As
               const v = a.versions[a.versions.length - 1]!;
               const inv = rows.find((r) => r.assessment.id === a.id);
               return (
-                <tr key={a.id} className={openId === a.id ? "bg-accent/40" : "cursor-pointer hover:bg-muted/40"} onClick={() => onOpen(a)}>
+                <tr
+                  key={a.id}
+                  className={openId === a.id ? "bg-accent/40" : "cursor-pointer hover:bg-muted/40"}
+                  onClick={() => onOpen(a)}
+                >
                   <td className="px-3 py-2 font-mono text-xs">
                     {a.id}
                     {a.fixtureId && <Chip className="ml-1.5">{a.fixtureId}</Chip>}
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {v.inputs.line.grade || "No role"} · {v.inputs.line.location || "No location"} · {formatINR(v.inputs.line.billedRatePaise)}/h
+                    {v.inputs.line.grade || "No role"} · {v.inputs.line.location || "No location"} ·{" "}
+                    {formatINR(v.inputs.line.billedRatePaise)}/h
                   </td>
                   <td className="px-3 py-2">
                     <ResultStatusChip status={v.result.status} />
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">v{v.n}</td>
-                  <td className="px-3 py-2">{inv ? <InvestigationStatusChip status={inv.status} /> : <span className="text-xs text-muted-foreground">None</span>}</td>
+                  <td className="px-3 py-2">
+                    {inv ? (
+                      <InvestigationStatusChip status={inv.status} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">None</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}

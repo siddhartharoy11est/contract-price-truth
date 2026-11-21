@@ -78,7 +78,9 @@ function OutcomeRow({ o }: { o: Outcome }) {
       ) : (
         <span className="tabular font-mono text-xs">
           governs {formatINR(o.ratePaise)}/h, {describeOutcome(o)}
-          {o.conditional && <span className="text-muted-foreground"> (conditional, not a finding)</span>}
+          {o.conditional && (
+            <span className="text-muted-foreground"> (conditional, not a finding)</span>
+          )}
         </span>
       )}
     </li>
@@ -87,13 +89,33 @@ function OutcomeRow({ o }: { o: Outcome }) {
 
 function AdjustmentDetails({ a }: { a: AdjustmentCheck }) {
   const rows: [string, string][] = [
-    ["Supplier claim", `${a.claimTermId}: ${formatINR(a.claimedRatePaise)}/h from ${formatDate(a.effectiveFrom)}`],
-    ["Notice", a.noticeDate ? `${formatDate(a.noticeDate)}, ${a.noticeDays} days ahead (${a.requiredNoticeDays} required)` : "No notice date"],
+    [
+      "Supplier claim",
+      `${a.claimTermId}: ${formatINR(a.claimedRatePaise)}/h from ${formatDate(a.effectiveFrom)}`,
+    ],
+    [
+      "Notice",
+      a.noticeDate
+        ? `${formatDate(a.noticeDate)}, ${a.noticeDays} days ahead (${a.requiredNoticeDays} required)`
+        : "No notice date",
+    ],
     ["Base rate", a.baseRatePaise !== null ? `${formatINR(a.baseRatePaise)}/h` : "Not settled"],
-    ["Increase applied", a.appliedPct !== null ? `${a.appliedPct}%, the lesser of the ${a.capPct}% cap and the supplier-stated index ${a.statedIndexPct}%` : "Unknown"],
-    ["Permitted rate", a.permittedRatePaise !== null ? `${formatINR(a.permittedRatePaise)}/h` : "Unknown"],
+    [
+      "Increase applied",
+      a.appliedPct !== null
+        ? `${a.appliedPct}%, the lesser of the ${a.capPct}% cap and the supplier-stated index ${a.statedIndexPct}%`
+        : "Unknown",
+    ],
+    [
+      "Permitted rate",
+      a.permittedRatePaise !== null ? `${formatINR(a.permittedRatePaise)}/h` : "Unknown",
+    ],
   ];
-  if (a.excessOverPermittedPaise > 0) rows.push(["Claim above permitted", `${formatINR(a.excessOverPermittedPaise)}/h, so the permitted rate governs`]);
+  if (a.excessOverPermittedPaise > 0)
+    rows.push([
+      "Claim above permitted",
+      `${formatINR(a.excessOverPermittedPaise)}/h, so the permitted rate governs`,
+    ]);
   return (
     <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-muted/30 p-3 text-xs sm:grid-cols-[10rem_1fr]">
       {rows.map(([k, v]) => (
@@ -139,11 +161,14 @@ export function ResultBody({
           {line && (
             <Section title="Calculation">
               <p className="tabular font-mono text-xs leading-relaxed">
-                Expected {line.hours} h x {formatINR(result.applicableRatePaise!)} = {formatINR(result.expectedPaise!)}
+                Expected {line.hours} h x {formatINR(result.applicableRatePaise!)} ={" "}
+                {formatINR(result.expectedPaise!)}
                 <br />
-                Billed {line.hours} h x {formatINR(line.billedRatePaise)} = {formatINR(result.billedPaise!)}
+                Billed {line.hours} h x {formatINR(line.billedRatePaise)} ={" "}
+                {formatINR(result.billedPaise!)}
                 <br />
-                Difference {formatINR(result.billedPaise!)} minus {formatINR(result.expectedPaise!)} = {formatINR(diff)}
+                Difference {formatINR(result.billedPaise!)} minus {formatINR(result.expectedPaise!)}{" "}
+                = {formatINR(diff)}
               </p>
             </Section>
           )}
@@ -157,7 +182,9 @@ export function ResultBody({
               <li key={i} className="rounded-md border p-2.5 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <ResultStatusChip status={b.status} />
-                  <span className="text-xs text-muted-foreground">Owner: {OWNER_NAME[b.owner]}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Owner: {OWNER_NAME[b.owner]}
+                  </span>
                 </div>
                 <p className="mt-1.5">{b.reason}</p>
                 {b.termIds.length > 0 && (

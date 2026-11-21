@@ -5,7 +5,20 @@
 import { docById, ROLE_MAPS } from "@/data/seed";
 import type { EditableField, FieldValue } from "./term-state";
 
-const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const MONTHS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
 
 export const normalizeWs = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -15,7 +28,10 @@ export function quoteInDocument(docId: string, quote: string): boolean {
   if (!q) return false;
   const doc = docById(docId);
   if (!doc) return false;
-  return doc.clauses.some((c) => normalizeWs(c.text).includes(q)) || normalizeWs(doc.dateLine).includes(q);
+  return (
+    doc.clauses.some((c) => normalizeWs(c.text).includes(q)) ||
+    normalizeWs(doc.dateLine).includes(q)
+  );
 }
 
 function numbersIn(text: string): string[] {

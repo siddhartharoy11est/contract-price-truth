@@ -70,7 +70,10 @@ interface Store {
   reviewClause: (id: string, choice: "Clear" | "Disputed", question?: string) => boolean;
   recordRuling: (conflictId: string, reading: Reading, reasoning: string) => boolean;
   saveCheck: (line: InvoiceLine, fixtureId: string | null) => string | null;
-  supplyFact: (assessmentId: string, fact: { kind: "location" | "grade"; value: string; note?: string }) => boolean;
+  supplyFact: (
+    assessmentId: string,
+    fact: { kind: "location" | "grade"; value: string; note?: string },
+  ) => boolean;
   requestReview: (assessmentId: string) => string | null;
   raiseInvestigation: (assessmentId: string) => string | null;
   decide: (investigationId: string, kind: wf.DecisionKind, reason: string) => boolean;
@@ -145,7 +148,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
 
   const evaluate = useCallback((line: InvoiceLine) => evaluateLine(line, ctx), [ctx]);
 
-  const setRole = useCallback((r: RoleId) => setState({ ...stateRef.current, role: r }), [setState]);
+  const setRole = useCallback(
+    (r: RoleId) => setState({ ...stateRef.current, role: r }),
+    [setState],
+  );
   const selectAccount = useCallback(
     (r: RoleId) => setState({ ...stateRef.current, role: r, accountSelected: true }),
     [setState],
@@ -167,13 +173,22 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           secondReadDiffers: true,
           history: [
             ...t.history,
-            { at: rec.at, by: "Live AI second read", role: "system", action: "Second read differs. Re-verification required." },
+            {
+              at: rec.at,
+              by: "Live AI second read",
+              role: "system",
+              action: "Second read differs. Re-verification required.",
+            },
           ],
         };
       }
       let next: wf.WorkflowState = { ...s, terms };
       if (rec.outcome?.differingStoredIds?.length)
-        next = wf.recompute(next, { by: "Live AI second read", role: "system", at: rec.at }, "a second read differed");
+        next = wf.recompute(
+          next,
+          { by: "Live AI second read", role: "system", at: rec.at },
+          "a second read differed",
+        );
       setState({ ...s, ...next, liveReads: { ...s.liveReads, [docId]: rec } });
     },
     [setState],
@@ -208,11 +223,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
     setAccountSelected,
     verifyTerm: (id, reason) => runOk((s, a) => wf.verifyTerm(s, a, id, reason)),
     markNeedsReview: (id, reason) => runOk((s, a) => wf.markNeedsReview(s, a, id, reason)),
-    correctField: (id, field, v, opts) => runOk((s, a) => wf.correctField(s, a, id, field, v, opts)),
+    correctField: (id, field, v, opts) =>
+      runOk((s, a) => wf.correctField(s, a, id, field, v, opts)),
     setOverride: (id, target, reason) => runOk((s, a) => wf.setOverride(s, a, id, target, reason)),
     confirmOverride: (id) => runOk((s, a) => wf.confirmOverride(s, a, id)),
     reviewClause: (id, choice, q) => runOk((s, a) => wf.reviewClause(s, a, id, choice, q)),
-    recordRuling: (cid, reading, reasoning) => runOk((s, a) => wf.recordRuling(s, a, cid, reading, reasoning)),
+    recordRuling: (cid, reading, reasoning) =>
+      runOk((s, a) => wf.recordRuling(s, a, cid, reading, reasoning)),
     saveCheck: (line, fixtureId) =>
       run((s, a) => {
         const out = wf.saveCheck(s, a, line, fixtureId);
@@ -284,10 +301,12 @@ export function useDerived() {
       return st === "Proposed" || st === "Needs review";
     }).length;
     const rateToVerify = TERMS.filter(
-      (t) => t.kind === "rate" && ["Proposed", "Needs review"].includes(state.terms[t.id]?.status ?? ""),
+      (t) =>
+        t.kind === "rate" && ["Proposed", "Needs review"].includes(state.terms[t.id]?.status ?? ""),
     ).length;
     const clausesToReview = TERMS.filter(
-      (t) => (t.kind === "clause" || t.kind === "notice") && state.terms[t.id]?.status !== "Verified",
+      (t) =>
+        (t.kind === "clause" || t.kind === "notice") && state.terms[t.id]?.status !== "Verified",
     ).length;
     const unconfirmedLinks = TERMS.filter((t) => {
       const s = state.terms[t.id];
@@ -295,14 +314,24 @@ export function useDerived() {
     }).length;
     // Potential: latest version is a Potential discrepancy (all rates Verified by construction), not yet decided.
     const potentialPaise = rows
-      .filter((r) => r.latest.result.status === "Potential discrepancy" && (r.status === "Open" || r.status === "Reopened"))
+      .filter(
+        (r) =>
+          r.latest.result.status === "Potential discrepancy" &&
+          (r.status === "Open" || r.status === "Reopened"),
+      )
       .reduce((sum, r) => sum + r.latest.result.differencePaise!, 0);
     const confirmedPaise = rows
       .filter((r) => r.status === "Confirmed")
       .reduce((sum, r) => sum + (r.investigation.decisions.at(-1)?.amountPaise ?? 0), 0);
-    const openInvestigations = rows.filter((r) => ["Open", "Reopened", "With Legal"].includes(r.status)).length;
-    const conflictsOpen = CONFLICTS.filter((c) => state.conflictCases[c.id]?.status !== "Ruled").length;
-    const conflictsWithLegal = CONFLICTS.filter((c) => state.conflictCases[c.id]?.status === "With Legal").length;
+    const openInvestigations = rows.filter((r) =>
+      ["Open", "Reopened", "With Legal"].includes(r.status),
+    ).length;
+    const conflictsOpen = CONFLICTS.filter(
+      (c) => state.conflictCases[c.id]?.status !== "Ruled",
+    ).length;
+    const conflictsWithLegal = CONFLICTS.filter(
+      (c) => state.conflictCases[c.id]?.status === "With Legal",
+    ).length;
     return {
       verified,
       totalTerms: countable.length,

@@ -10,7 +10,7 @@ import { TermCitation } from "./citation";
 export function ConflictCard({ conflict, children }: { conflict: Conflict; children?: ReactNode }) {
   const { state } = useDemo();
   const ruling = state.rulings[conflict.id];
-  const escalation = state.escalations[conflict.id];
+  const withLegal = state.conflictCases[conflict.id]?.status === "With Legal";
   return (
     <section id={conflict.id} className="surface scroll-mt-24 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
@@ -25,7 +25,7 @@ export function ConflictCard({ conflict, children }: { conflict: Conflict; child
         </div>
         {ruling ? (
           <Chip tone="success">Decided: Reading {ruling.reading}</Chip>
-        ) : escalation ? (
+        ) : withLegal ? (
           <Chip tone="legal">With Legal</Chip>
         ) : (
           <Chip tone="warning">Not decided</Chip>
