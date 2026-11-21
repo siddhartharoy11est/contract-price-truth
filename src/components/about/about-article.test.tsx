@@ -64,7 +64,7 @@ describe("About page content", () => {
   it("has no em or en dashes and no first person plural in the page text", () => {
     const { container } = renderPage();
     const text = container.textContent ?? "";
-    expect(text).not.toMatch(/[–—]/);
+    expect(text).not.toMatch(new RegExp("[\\u2013\\u2014]"));
     expect(text).not.toMatch(/\bwe\b/i);
   });
 });
