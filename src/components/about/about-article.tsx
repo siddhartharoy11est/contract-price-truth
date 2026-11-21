@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { groupSections, parseInline, type Block, type Inline } from "@/lib/about-content";
-import { AutonomyCalculator, WorkedExample } from "./calculators";
+import { AutonomyCalculator, BusinessCase, WorkedExample } from "./calculators";
 import { ProgressRail } from "./progress-rail";
 import { MetricTree, ProblemFlow, Sensitivity, Trajectory } from "./about-visuals";
 
@@ -199,7 +199,11 @@ function Visual({ name }: { name: string }) {
     case "trajectory":
       return <Trajectory />;
     case "sensitivity":
-      return <Sensitivity />;
+      return (
+        <Sensitivity>
+          <BusinessCase />
+        </Sensitivity>
+      );
     default:
       return null;
   }

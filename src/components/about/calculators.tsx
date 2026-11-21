@@ -2,6 +2,16 @@ import { AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import {
   AUTONOMY_DEFAULTS,
+  breakEvenPct,
+  BUSINESS_DEFAULTS,
+  clearsBreakEven,
+  CONTRACT_VALUE_LAKH,
+  formatDecimal,
+  gridMatch,
+  realisedLakh,
+  stakeSharePct,
+  valueAtStakeLakh,
+  VERIFY_COST_RUPEES,
   autonomyLevel,
   formatRupees,
   LEVEL_NAMES,
@@ -10,6 +20,7 @@ import {
   workedExample,
 } from "@/lib/about-calculators";
 import { groupIndian } from "@/lib/money";
+import { SensitivityGrid } from "./about-visuals";
 
 /** Optional calculators on the About page. The page reads fully without touching them. */
 
@@ -269,6 +280,93 @@ export function AutonomyCalculator() {
       </ul>
       <p className="mt-3 text-sm font-medium" aria-live="polite">
         Current level: {LEVEL_NAMES[r.level]}
+      </p>
+    </div>
+  );
+}
+
+/** Section 5: value at stake, realised value and break-even, tied to the 3 by 3 grid. */
+export function BusinessCase() {
+  const [v, setV] = useState(BUSINESS_DEFAULTS);
+  const set = (k: keyof typeof v) => (n: number) => setV((prev) => ({ ...prev, [k]: n }));
+  const stake = valueAtStakeLakh(v.spendCrore, v.exposurePct, v.gapPct);
+  const realised = realisedLakh(stake, v.sharePct);
+  const share = stakeSharePct(v.exposurePct, v.gapPct);
+  const clears = clearsBreakEven(v.exposurePct, v.gapPct);
+  const match = gridMatch(v.exposurePct, v.gapPct);
+
+  return (
+    <div data-testid="calc-business-case">
+      <Hint>Drag the sliders or pick a cell</Hint>
+      <SensitivityGrid
+        selected={match ? { exposure: v.exposurePct, gap: v.gapPct } : undefined}
+        onPick={(exposure, gap) =>
+          setV((prev) => ({ ...prev, exposurePct: exposure, gapPct: gap }))
+        }
+      />
+      <div className="mt-4 grid grid-cols-1 gap-4 rounded-lg border p-4 sm:grid-cols-2">
+        <RangeField
+          label="In-scope spend"
+          value={v.spendCrore}
+          min={10}
+          max={1000}
+          step={10}
+          onChange={set("spendCrore")}
+          display={`₹${groupIndian(String(v.spendCrore))} crore`}
+        />
+        <RangeField
+          label="Exposure"
+          value={v.exposurePct}
+          min={1}
+          max={15}
+          step={1}
+          onChange={set("exposurePct")}
+          display={`${v.exposurePct}%`}
+        />
+        <RangeField
+          label="Gap"
+          value={v.gapPct}
+          min={1}
+          max={15}
+          step={1}
+          onChange={set("gapPct")}
+          display={`${v.gapPct}%`}
+        />
+        <RangeField
+          label="Share caught and acted on"
+          value={v.sharePct}
+          min={0}
+          max={100}
+          step={1}
+          onChange={set("sharePct")}
+          display={`${v.sharePct}%`}
+        />
+      </div>
+      <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2" aria-live="polite">
+        <div className="rounded-md bg-muted px-3 py-2">
+          <dt className="eyebrow">Value at stake per year</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">₹{formatDecimal(stake)} lakh</dd>
+        </div>
+        <div className="rounded-md bg-muted px-3 py-2">
+          <dt className="eyebrow">Realised value per year</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">₹{formatDecimal(realised)} lakh</dd>
+        </div>
+        <div className="rounded-md bg-muted px-3 py-2 sm:col-span-2">
+          <dt className="eyebrow">Break-even</dt>
+          <dd className="mt-0.5">
+            <Status ok={clears}>
+              Verification at {formatRupees(VERIFY_COST_RUPEES)} per contract on a ₹
+              {CONTRACT_VALUE_LAKH} lakh contract is repaid at {formatDecimal(breakEvenPct(), 3)}%
+              of contract value. Exposure × gap is {formatDecimal(share, 3)}%, so it{" "}
+              {clears ? "clears break-even" : "does not clear break-even"}.
+            </Status>
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-[13px] text-muted-foreground" aria-live="polite">
+        {match
+          ? `Highlighted in the grid: exposure ${v.exposurePct}%, gap ${v.gapPct}%.`
+          : "Exposure and gap are between grid values, so no cell is highlighted."}
       </p>
     </div>
   );

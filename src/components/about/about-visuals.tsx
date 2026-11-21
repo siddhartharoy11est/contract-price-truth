@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { GRID_STEPS, valueAtStakeLakh } from "@/lib/about-calculators";
 
 /**
  * The four charts on the About page, ported from docs/About_Preview_v2.html. Colours come
@@ -191,7 +192,7 @@ export function MetricTree() {
 
 /* ---------- trajectory ---------- */
 
-export const TRAJECTORY = [
+const TRAJECTORY = [
   { month: 0, coverage: 0, accepted: null },
   { month: 1, coverage: 25, accepted: 55 },
   { month: 2, coverage: 45, accepted: 65 },
@@ -373,8 +374,6 @@ export function Trajectory() {
 
 /* ---------- sensitivity ---------- */
 
-export const GRID_STEPS = [2, 5, 10] as const;
-
 const RAMP: Record<number, { bg: string; fg: string }> = {
   4: { bg: "#cde2fb", fg: "#0b0b0b" },
   10: { bg: "#86b6ef", fg: "#0b0b0b" },
@@ -383,10 +382,6 @@ const RAMP: Record<number, { bg: string; fg: string }> = {
   50: { bg: "#256abf", fg: "#ffffff" },
   100: { bg: "#0d366b", fg: "#ffffff" },
 };
-
-export function cellValue(exposure: number, gap: number): number {
-  return (10000 * exposure * gap) / 10000;
-}
 
 export function SensitivityGrid({
   selected,
@@ -421,11 +416,15 @@ export function SensitivityGrid({
                 {e}%
               </th>
               {GRID_STEPS.map((g) => {
-                const v = cellValue(e, g);
+                const v = valueAtStakeLakh(100, e, g);
                 const c = RAMP[v] ?? { bg: "#3987e5", fg: "#0b0b0b" };
                 const title = `Exposure ${e}%, gap ${g}%: ₹${v} lakh`;
                 const isSel = selected?.exposure === e && selected?.gap === g;
-                const style = { background: c.bg, color: c.fg };
+                const style = {
+                  background: c.bg,
+                  color: c.fg,
+                  ...(isSel ? { boxShadow: "inset 0 0 0 3px var(--s2)" } : {}),
+                };
                 return (
                   <td key={g} className="border-2 border-card p-0 text-center">
                     {onPick ? (
@@ -436,8 +435,8 @@ export function SensitivityGrid({
                         aria-pressed={isSel}
                         onClick={() => onPick(e, g)}
                         style={style}
-                        className={`block w-full min-w-16 px-4 py-4 text-lg font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
-                          isSel ? "outline-3 -outline-offset-4 outline-[var(--s2)] underline" : ""
+                        className={`block w-full min-w-16 cursor-pointer px-4 py-4 text-lg font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                          isSel ? "underline underline-offset-4" : ""
                         }`}
                       >
                         {v}

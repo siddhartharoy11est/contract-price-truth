@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTONOMY_DEFAULTS,
+  breakEvenPct,
+  BUSINESS_DEFAULTS,
+  clearsBreakEven,
+  formatDecimal,
+  gridMatch,
+  realisedLakh,
+  sensitivityGrid,
+  stakeSharePct,
+  valueAtStakeLakh,
   autonomyLevel,
   formatRupees,
   readWhole,
@@ -79,5 +88,34 @@ describe("Autonomy calculator", () => {
     const r = autonomyLevel({ ...ready, acceptedPct: 94, daysStable: 120 });
     expect(r.level3Unlocked).toBe(false);
     expect(r.level3Missing).toEqual(["Level 2 has to be unlocked first."]);
+  });
+});
+
+describe("Business case calculator", () => {
+  it("gives 25 lakh at 100 crore with the defaults, the 5 by 5 cell", () => {
+    const { spendCrore, exposurePct, gapPct, sharePct } = BUSINESS_DEFAULTS;
+    const stake = valueAtStakeLakh(spendCrore, exposurePct, gapPct);
+    expect(stake).toBe(25);
+    expect(realisedLakh(stake, sharePct)).toBe(25);
+    expect(gridMatch(exposurePct, gapPct)).toEqual({ row: 1, col: 1 });
+  });
+
+  it("fills all nine grid cells", () => {
+    expect(sensitivityGrid().flat()).toEqual([4, 10, 20, 10, 25, 50, 20, 50, 100]);
+  });
+
+  it("puts break-even at 0.015 percent and the smallest cell, 0.04 percent, clears it", () => {
+    expect(breakEvenPct()).toBeCloseTo(0.015, 10);
+    expect(stakeSharePct(2, 2)).toBeCloseTo(0.04, 10);
+    expect(clearsBreakEven(2, 2)).toBe(true);
+    expect(clearsBreakEven(1, 1)).toBe(false);
+  });
+
+  it("scales realised value by the share caught and finds no cell off the grid", () => {
+    expect(realisedLakh(25, 40)).toBe(10);
+    expect(gridMatch(4, 5)).toBeNull();
+    expect(formatDecimal(2250)).toBe("2,250");
+    expect(formatDecimal(0.25)).toBe("0.25");
+    expect(formatDecimal(12.5)).toBe("12.5");
   });
 });

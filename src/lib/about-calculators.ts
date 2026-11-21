@@ -113,3 +113,73 @@ export function autonomyLevel(i: AutonomyInput): AutonomyResult {
     level3Missing,
   };
 }
+
+/* ---------- Business case (section 5) ---------- */
+
+export type BusinessInput = {
+  spendCrore: number;
+  exposurePct: number;
+  gapPct: number;
+  sharePct: number;
+};
+
+export const BUSINESS_DEFAULTS: BusinessInput = {
+  spendCrore: 100,
+  exposurePct: 5,
+  gapPct: 5,
+  sharePct: 100,
+};
+
+export const GRID_STEPS = [2, 5, 10] as const;
+export const VERIFY_COST_RUPEES = 750;
+export const CONTRACT_VALUE_LAKH = 50;
+
+/** Value at stake per year in lakh: spend in crore × 100 × exposure × gap. */
+export function valueAtStakeLakh(spendCrore: number, exposurePct: number, gapPct: number): number {
+  return (spendCrore * 100 * exposurePct * gapPct) / 10000;
+}
+
+export function realisedLakh(stakeLakh: number, sharePct: number): number {
+  return (stakeLakh * sharePct) / 100;
+}
+
+/** Share of contract value at which verification time is repaid, in percent. */
+export function breakEvenPct(
+  costRupees = VERIFY_COST_RUPEES,
+  contractLakh = CONTRACT_VALUE_LAKH,
+): number {
+  return (costRupees * 100) / (contractLakh * 100000);
+}
+
+/** Exposure × gap as a percent of spend, for example 5% × 5% = 0.25%. */
+export function stakeSharePct(exposurePct: number, gapPct: number): number {
+  return (exposurePct * gapPct) / 100;
+}
+
+export function clearsBreakEven(exposurePct: number, gapPct: number): boolean {
+  return stakeSharePct(exposurePct, gapPct) > breakEvenPct();
+}
+
+/** The 3 by 3 grid of value at stake per ₹100 crore, rows exposure, columns gap. */
+export function sensitivityGrid(): number[][] {
+  return GRID_STEPS.map((e) => GRID_STEPS.map((g) => valueAtStakeLakh(100, e, g)));
+}
+
+/** The grid cell that matches the sliders, or null when they are off the grid values. */
+export function gridMatch(
+  exposurePct: number,
+  gapPct: number,
+): { row: number; col: number } | null {
+  const row = GRID_STEPS.indexOf(exposurePct as (typeof GRID_STEPS)[number]);
+  const col = GRID_STEPS.indexOf(gapPct as (typeof GRID_STEPS)[number]);
+  return row >= 0 && col >= 0 ? { row, col } : null;
+}
+
+/** Up to two decimals, Indian grouping, no trailing zeros: 2,250 or 0.25 or 12.5. */
+export function formatDecimal(n: number, maxDecimals = 2): string {
+  const fixed = Math.abs(n).toFixed(maxDecimals);
+  const [whole = "0", frac = ""] = fixed.split(".");
+  const trimmed = frac.replace(/0+$/, "");
+  const body = `${groupIndian(whole)}${trimmed ? `.${trimmed}` : ""}`;
+  return n < 0 ? `-${body}` : body;
+}
