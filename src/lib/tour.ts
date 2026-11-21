@@ -102,7 +102,7 @@ export const TOUR_STEPS: TourStep[] = [
     badges: ["people"],
     body: [
       "Not every price rule is a rate. A schedule note says rates are fixed for the term, a clause allows an annual increase, and the supplier sent a notice asking for a higher rate.",
-      "The notice is a claim, not an agreement. Mark T06 Disputed and write the question for Legal.",
+      "The notice is a claim, not an agreement. Mark T06 Disputed and write the question for Legal, then review T07, T08 and T09 as Clear so every clause in the conflict is reviewed.",
     ],
     notes: ["That escalates the conflict to Legal. We will see it from Legal's side shortly."],
     why: "Only genuine contradictions reach Legal. Missing facts stay with Procurement.",
@@ -269,14 +269,27 @@ export function tourVerifyT02(ws: wf.WorkflowState, actor: wf.Actor): wf.Workflo
   });
 }
 
-/** Step 4: marks T06 Disputed with the prewritten question, which sends conflict C1 to Legal. */
+/** The other clauses in conflict C1. Each must be reviewed before an invoice line shows both readings. */
+const OTHER_C1_CLAUSES = ["T07", "T08", "T09"];
+
+/**
+ * Step 4: marks T06 Disputed with the prewritten question, which sends conflict C1 to Legal,
+ * and reviews the other C1 clauses as Clear, as Journey C does. Clauses already reviewed stay.
+ */
 export function tourDisputeT06(ws: wf.WorkflowState, actor: wf.Actor): wf.WorkflowState {
-  if (ws.terms["T06"]?.interpretation?.choice === "Disputed") return ws;
-  const next = wf.reviewClause(ws, actor, "T06", "Disputed", TOUR_QUESTION);
-  return wf.log(next, actor, `${TOUR_NOTE}: T06 marked Disputed and sent to Legal`, {
-    kind: "term",
-    id: "T06",
-  });
+  let next = ws;
+  if (next.terms["T06"]?.interpretation?.choice !== "Disputed")
+    next = wf.reviewClause(next, actor, "T06", "Disputed", TOUR_QUESTION);
+  for (const id of OTHER_C1_CLAUSES)
+    if (!next.terms[id]?.interpretation)
+      next = wf.reviewClause(next, actor, id, "Clear", TOUR_NOTE);
+  if (next === ws) return ws;
+  return wf.log(
+    next,
+    actor,
+    `${TOUR_NOTE}: T06 marked Disputed and sent to Legal, T07, T08 and T09 reviewed as Clear`,
+    { kind: "term", id: "T06" },
+  );
 }
 
 export const TOUR_ACTIONS = {

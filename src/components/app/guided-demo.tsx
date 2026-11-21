@@ -191,7 +191,8 @@ function TourPanel({
     s.doForMe === "verify-T02"
       ? state.terms["T02"]?.status === "Verified" && state.terms["T02"]?.override?.confirmed
       : s.doForMe === "dispute-T06"
-        ? state.terms["T06"]?.interpretation?.choice === "Disputed"
+        ? state.terms["T06"]?.interpretation?.choice === "Disputed" &&
+          ["T07", "T08", "T09"].every((id) => state.terms[id]?.interpretation)
         : false;
 
   const doForMe = () => {
@@ -200,7 +201,7 @@ function TourPanel({
       setDone(
         s.doForMe === "verify-T02"
           ? "Done: T02 is Verified and its override link is confirmed, recorded as Priya Nair."
-          : "Done: T06 is Disputed and the question is with Legal, recorded as Priya Nair.",
+          : "Done: T06 is Disputed and the question is with Legal. T07, T08 and T09 are reviewed as Clear. Recorded as Priya Nair.",
       );
       if (s.go) follow(s.go, s.persona);
     }
