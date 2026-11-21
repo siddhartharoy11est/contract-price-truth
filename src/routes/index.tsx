@@ -9,7 +9,7 @@ import {
   Info,
   Scale,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip } from "@/components/app/chips";
 import { CONFLICTS, TERMS } from "@/data/seed";
@@ -19,6 +19,7 @@ import { roleById } from "@/data/roles";
 import { DISPUTE_START } from "@/lib/demo-hints";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { selectActivity } from "@/lib/activity-list";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -194,6 +195,7 @@ function DocumentBars() {
 
 function RecentActivity() {
   const { state } = useDemo();
+  const [expanded, setExpanded] = useState(false);
   const linkFor = (ref: ActivityEvent["ref"]) =>
     ref?.kind === "term"
       ? { to: "/price-book" as const, hash: ref.id }
@@ -202,19 +204,19 @@ function RecentActivity() {
         : ref?.kind === "conflict"
           ? { to: "/legal" as const, hash: ref.id }
           : { to: "/invoice-check" as const, hash: "" };
-  const events = state.activity
-    .map((e) => ({ at: e.at, actor: e.by, text: e.text, ...linkFor(e.ref) }))
-    .sort((a, b) => b.at.localeCompare(a.at))
-    .slice(0, 6);
+  const { shown, total, canExpand } = selectActivity(
+    state.activity.map((e) => ({ at: e.at, actor: e.by, text: e.text, ...linkFor(e.ref) })),
+    expanded,
+  );
   return (
-    <section className="surface overflow-hidden">
+    <section className="surface flex flex-col overflow-hidden lg:flex-1">
       <div className="border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Recent Contract Activity</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Verification and investigation events from this browser session
         </p>
       </div>
-      {events.length === 0 ? (
+      {shown.length === 0 ? (
         <div className="px-4 py-8 text-center">
           <p className="text-sm font-medium">No session activity yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -222,38 +224,36 @@ function RecentActivity() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] text-sm">
-            <thead>
-              <tr>
-                {["Event", "Owner", "Date"].map((h) => (
-                  <th key={h} className="table-heading">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {events.map((event, index) => (
-                <tr key={`${event.at}-${index}`} className="hover:bg-muted/40">
-                  <td className="table-cell">
-                    <Link
-                      to={event.to}
-                      hash={event.hash}
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      {event.text}
-                    </Link>
-                  </td>
-                  <td className="table-cell text-xs text-muted-foreground">{event.actor}</td>
-                  <td className="table-cell whitespace-nowrap text-xs text-muted-foreground">
-                    {formatTimestamp(event.at)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <ul className="divide-y" id="recent-activity-list">
+            {shown.map((event, index) => (
+              <li key={`${event.at}-${index}`} className="px-4 py-2 hover:bg-muted/40">
+                <Link
+                  to={event.to}
+                  hash={event.hash}
+                  title={event.text}
+                  className="line-clamp-2 text-xs font-medium text-primary hover:underline"
+                >
+                  {event.text}
+                </Link>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {event.actor}, {formatTimestamp(event.at)}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {canExpand && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              aria-controls="recent-activity-list"
+              className="mt-auto w-full border-t px-4 py-2 text-left text-xs font-medium text-primary hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            >
+              {expanded ? "Show fewer" : `Show all (${total})`}
+            </button>
+          )}
+        </>
       )}
     </section>
   );
@@ -398,38 +398,42 @@ function ProcurementDashboard() {
           tone="success"
         />
       </div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
-        <section className="surface h-fit overflow-hidden" data-tour="action-required">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold">Action Required</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Pending work from current contract and invoice state
-              </p>
+      {/* From 1024px: Action Required and activity on the left, the two charts on the right.
+          Narrower: Action Required, then the charts, then activity. */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
+        <div className="contents lg:order-1 lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
+          <section className="surface order-1 overflow-hidden" data-tour="action-required">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold">Action Required</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Pending work from current contract and invoice state
+                </p>
+              </div>
+              <Chip tone={actions.length ? "warning" : "success"}>
+                {actions.length} {actions.length === 1 ? "item" : "items"}
+              </Chip>
             </div>
-            <Chip tone={actions.length ? "warning" : "success"}>
-              {actions.length} {actions.length === 1 ? "item" : "items"}
-            </Chip>
+            {actions.length ? (
+              <div className="divide-y">{actions}</div>
+            ) : (
+              <div className="flex flex-col items-center px-4 py-10 text-center">
+                <CheckCircle2 className="mb-2 size-6 text-success" />
+                <p className="text-sm font-medium">No pending actions</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  All current verification and investigation work is complete.
+                </p>
+              </div>
+            )}
+          </section>
+          <div className="order-3 flex flex-col lg:flex-1">
+            <RecentActivity />
           </div>
-          {actions.length ? (
-            <div className="divide-y">{actions}</div>
-          ) : (
-            <div className="flex flex-col items-center px-4 py-10 text-center">
-              <CheckCircle2 className="mb-2 size-6 text-success" />
-              <p className="text-sm font-medium">No pending actions</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                All current verification and investigation work is complete.
-              </p>
-            </div>
-          )}
-        </section>
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
+        </div>
+        <div className="order-2 flex flex-col gap-5 sm:grid sm:grid-cols-2 lg:order-2 lg:flex lg:flex-col lg:[&>*:last-child]:flex-1">
           <StatusBars />
           <DocumentBars />
         </div>
-      </div>
-      <div className="mt-5">
-        <RecentActivity />
       </div>
     </>
   );
