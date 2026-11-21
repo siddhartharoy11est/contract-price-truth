@@ -9,6 +9,8 @@ import {
   TOUR_KEY,
   TOUR_NOTE,
   TOUR_ACTIONS,
+  runTourAction,
+  type TourActionId,
   TOUR_QUESTION,
   TOUR_STEPS,
   clearTour,
@@ -196,5 +198,90 @@ describe("handoff", () => {
     expect(wf.investigationStatus(inv, out.state.assessments[0]!, out.state.conflictCases)).toBe(
       "With Legal",
     );
+  });
+});
+
+const actorFor = (id: TourActionId): wf.Actor => {
+  const r = ROLES.find((x) => x.id === TOUR_ACTIONS[id].actor)!;
+  return { by: r.name, role: r.id, at: "2026-11-22T11:00:00.000Z" };
+};
+
+/** Plays a step's actions on a state, as the panel does. */
+const playStep = (ws: wf.WorkflowState, n: number) => {
+  let state = ws;
+  const done: (string | null)[] = [];
+  for (const id of TOUR_STEPS[n]!.actions ?? []) {
+    const out = runTourAction(state, id, actorFor(id));
+    state = out.state;
+    done.push(out.done);
+  }
+  return { state, done };
+};
+
+describe("tour actions on the real workflow", () => {
+  const toStep = (n: number) => {
+    let ws = wf.seedWorkflow();
+    for (let i = 3; i < n; i++) ws = playStep(ws, i).state;
+    return ws;
+  };
+
+  it("every action step changes state once and is idempotent when run twice", () => {
+    for (const n of [3, 4, 5, 6, 8]) {
+      const before = toStep(n);
+      const first = playStep(before, n);
+      expect(first.state, `step ${n}`).not.toBe(before);
+      expect(
+        first.done.every((d) => d?.startsWith("Done: ")),
+        `step ${n}`,
+      ).toBe(true);
+      const second = playStep(first.state, n);
+      expect(second.state, `step ${n} again`).toBe(first.state);
+      expect(second.done).toEqual(first.done);
+    }
+  });
+
+  it("records actions as the step's persona with the tour note", () => {
+    const ws = toStep(9);
+    const notes = ws.activity.filter((e) => e.text.startsWith(TOUR_NOTE));
+    expect(new Set(notes.map((e) => e.by))).toEqual(
+      new Set(["Priya Nair", "Dev Mehta", "Anika Rao"]),
+    );
+    expect(ws.rulings["C1"]).toMatchObject({ reading: "A", by: "Anika Rao" });
+  });
+
+  it("leaves a consistent state after steps 3 to 8 in order", () => {
+    const ws = toStep(9);
+    expect(ws.terms["T02"]!.status).toBe("Verified");
+    expect(ws.terms["T02"]!.override?.confirmed).toBe(true);
+    expect(ws.terms["T06"]!.interpretation?.choice).toBe("Disputed");
+    expect(ws.conflictCases["C1"]!.status).toBe("Ruled");
+    const s01 = ws.assessments.find((a) => a.fixtureId === "S01")!;
+    expect(s01.versions.at(-1)!.result.differencePaise).toBe(1500000);
+    const s09 = ws.assessments.find((a) => a.fixtureId === "S09")!;
+    expect(s09.versions.length).toBeGreaterThanOrEqual(2);
+    expect(s09.versions[0]!.result.status).toBe("Needs Legal");
+    expect(s09.versions.at(-1)!.result.status).not.toBe("Needs Legal");
+    const inv = ws.investigations.find((i) => i.assessmentId === s09.id)!;
+    expect(inv.origin).toBe("Request review");
+    expect(playStep(ws, 8).done.at(-1)).toBe(
+      `Done: ${inv.id} open, ${s09.versions.length} versions`,
+    );
+  });
+
+  it("skips an action the state does not allow, without throwing", () => {
+    const seed = wf.seedWorkflow();
+    for (const id of ["request-S09", "rule-C1", "open-S09-investigation"] as const) {
+      const out = runTourAction(seed, id, actorFor(id));
+      expect(out.state).toBe(seed);
+      expect(out.done).toBeNull();
+    }
+  });
+
+  it("steps out of order still work: S01 before T02 is verified waits for verification", () => {
+    const out = playStep(wf.seedWorkflow(), 5);
+    expect(out.done[0]).toBe("Done: S01 checked, Awaiting verification");
+    const later = playStep(out.state, 3).state;
+    const s01 = later.assessments.find((a) => a.fixtureId === "S01")!;
+    expect(s01.versions.at(-1)!.result.status).toBe("Potential discrepancy");
   });
 });
