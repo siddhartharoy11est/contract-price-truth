@@ -19,6 +19,7 @@ import { QuoteHighlight, TermCitation } from "@/components/app/citation";
 import { ConflictCard } from "@/components/app/conflict-card";
 import { RoleGate } from "@/components/app/role-gate";
 import { CONFLICTS } from "@/data/seed";
+import { DISPUTE_START, DISPUTE_HINT } from "@/lib/demo-hints";
 import type { SeedTerm } from "@/data/types";
 import { useDemo } from "@/lib/demo-store";
 import { formatINR, parseRupees } from "@/lib/money";
@@ -1014,6 +1015,7 @@ function ClauseReviewPanel({ t, onDone }: { t: SeedTerm; onDone: () => void }) {
               </span>
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{conflict.question}</p>
+            {caseState?.status === "Open" && <DisputeHint conflictId={conflict.id} termId={t.id} />}
             {caseState?.status !== "Open" && (
               <Link
                 to="/legal/$conflictId"
@@ -1128,14 +1130,71 @@ function ClauseReviewPanel({ t, onDone }: { t: SeedTerm; onDone: () => void }) {
   );
 }
 
+/**
+ * Demo hint shown while a conflict is still Open, so a first-time evaluator is not stuck with
+ * every clause Clear and nothing for Legal to rule on.
+ */
+function DisputeHint({ conflictId, termId }: { conflictId: string; termId?: string }) {
+  const { state } = useDemo();
+  const start = DISPUTE_START[conflictId];
+  if (!start) return null;
+  const conflict = CONFLICTS.find((c) => c.id === conflictId);
+  const allReviewed = conflict?.termIds.every((id) => state.terms[id]?.status === "Verified");
+  const here = termId === start.termId;
+  return (
+    <div
+      role="note"
+      className="mt-2 rounded-md border border-primary/30 bg-accent/60 p-2.5 text-xs text-foreground"
+    >
+      <p className="font-medium">Demo hint</p>
+      <p className="mt-0.5">
+        {allReviewed ? (
+          <>
+            Every clause is reviewed but none is Disputed, so Legal has nothing to rule on. Open{" "}
+            <Link
+              to="/price-book"
+              search={{ tab: "clauses" }}
+              hash={start.termId}
+              className="font-medium text-primary hover:underline"
+            >
+              {start.label}
+            </Link>
+            , press Needs review, then review it again as Disputed with your question.
+          </>
+        ) : here ? (
+          <>
+            This is the clause to mark Disputed. Tick the quote check, choose Disputed and send the
+            question below.
+          </>
+        ) : (
+          <>
+            To send this conflict to Legal, open{" "}
+            <Link
+              to="/price-book"
+              search={{ tab: "clauses" }}
+              hash={start.termId}
+              className="font-medium text-primary hover:underline"
+            >
+              {start.label}
+            </Link>{" "}
+            and mark it Disputed.
+          </>
+        )}{" "}
+        {DISPUTE_HINT}
+      </p>
+    </div>
+  );
+}
+
 function ConflictCaseNote({ conflictId }: { conflictId: string }) {
   const { state } = useDemo();
   const c = state.conflictCases[conflictId];
   if (!c || c.status === "Open")
     return (
-      <p className="text-sm text-muted-foreground">
-        Not sent to Legal. Review a clause and choose Disputed to send it with a question.
-      </p>
+      <div className="text-sm text-muted-foreground">
+        <p>Not sent to Legal. Review a clause and choose Disputed to send it with a question.</p>
+        <DisputeHint conflictId={conflictId} />
+      </div>
     );
   return (
     <div className="space-y-1 text-sm">

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { RoleId } from "@/data/types";
 import { useDemo, useInvestigations } from "@/lib/demo-store";
 import { cn } from "@/lib/utils";
+import { DISPUTE_HINT, DISPUTE_START } from "@/lib/demo-hints";
 
 type Path = "/price-book" | "/invoice-check" | "/findings" | "/legal";
 
@@ -14,7 +15,15 @@ export function GuidedDemo() {
   const f = (fx: string) => rows.filter((x) => x.assessment.fixtureId === fx);
   const checked = (fx: string) => state.assessments.some((a) => a.fixtureId === fx);
 
-  const steps: { text: string; hint?: string; done: boolean; role: RoleId; to: Path }[] = [
+  const steps: {
+    text: string;
+    hint?: string;
+    done: boolean;
+    role: RoleId;
+    to: Path;
+    clauses?: boolean;
+    hash?: string;
+  }[] = [
     {
       text: "Procurement: in the Price Book, verify T02 and T04 and confirm their override links.",
       done: ["T02", "T04"].every(
@@ -51,10 +60,12 @@ export function GuidedDemo() {
       to: f("S07").length ? "/findings" : "/invoice-check",
     },
     {
-      text: "Finance: check S09 and Request review. Procurement reviews clauses T06 to T09 and sends the conflict to Legal.",
+      text: `Finance: check S09 and Request review. Procurement opens ${DISPUTE_START["C1"]!.label}, marks it Disputed and sends the question to Legal.`,
+      hint: DISPUTE_HINT,
       done: checked("S09") && state.conflictCases["C1"]?.status !== "Open",
       role: checked("S09") ? "procurement" : "finance",
       to: checked("S09") ? "/price-book" : "/invoice-check",
+      ...(checked("S09") ? { clauses: true, hash: DISPUTE_START["C1"]!.termId } : {}),
     },
     {
       text: "Legal: record a ruling and watch the check get a new version.",
@@ -136,7 +147,11 @@ export function GuidedDemo() {
                 className="h-7 shrink-0 text-xs"
                 onClick={() => {
                   setRole(s.role);
-                  void navigate({ to: s.to });
+                  void navigate(
+                    s.clauses
+                      ? { to: "/price-book", search: { tab: "clauses" }, hash: s.hash ?? "" }
+                      : { to: s.to },
+                  );
                 }}
               >
                 Go

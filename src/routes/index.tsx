@@ -14,6 +14,7 @@ import { Chip } from "@/components/app/chips";
 import { CONFLICTS, TERMS } from "@/data/seed";
 import type { ActivityEvent } from "@/lib/workflow";
 import { useDemo, useDerived } from "@/lib/demo-store";
+import { DISPUTE_START } from "@/lib/demo-hints";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -295,7 +296,7 @@ function ProcurementDashboard() {
         detail={
           state.conflictCases[conflict.id]?.status === "With Legal"
             ? "Sent to Legal. Awaiting a ruling."
-            : "Fixed-rate and annual-adjustment clauses compete. Review the clauses."
+            : `Fixed-rate and annual-adjustment clauses compete. Start with ${DISPUTE_START[conflict.id]?.label ?? "a clause"}: mark it Disputed and write the question for Legal.`
         }
         action={
           state.conflictCases[conflict.id]?.status === "With Legal"
@@ -303,7 +304,12 @@ function ProcurementDashboard() {
             : "Review clauses"
         }
         to={state.conflictCases[conflict.id]?.status === "With Legal" ? "/legal" : "/price-book"}
-        hash={conflict.id}
+        {...(state.conflictCases[conflict.id]?.status === "With Legal"
+          ? { hash: conflict.id }
+          : {
+              search: { tab: "clauses" as const },
+              hash: DISPUTE_START[conflict.id]?.termId ?? conflict.id,
+            })}
         icon={<Scale className="size-4" />}
       />,
     );
