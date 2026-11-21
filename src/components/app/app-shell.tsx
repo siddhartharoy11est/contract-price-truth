@@ -116,9 +116,7 @@ function AccountSelection() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-md bg-sidebar text-sidebar-foreground">
-            <FileCheck2 className="size-5" />
-          </span>
+          <img src="/favicon.svg" alt="" className="size-10 rounded-md" />
           <div>
             <p className="text-lg font-semibold tracking-tight">Contract Price Truth</p>
             <p className="text-sm text-muted-foreground">Brightwave Group demo workspace</p>
@@ -284,9 +282,11 @@ function Navigation({
           hideLabels && "justify-center px-2",
         )}
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
-          <FileCheck2 className="size-4" />
-        </span>
+        <img
+          src="/favicon.svg"
+          alt=""
+          className="size-8 shrink-0 rounded-md ring-1 ring-sidebar-border"
+        />
         {!hideLabels && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">Contract Price Truth</p>
