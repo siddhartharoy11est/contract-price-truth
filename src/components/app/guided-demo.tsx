@@ -2,20 +2,24 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RoleId } from "@/data/types";
-import { useDemo } from "@/lib/demo-store";
+import { useDemo, useInvestigations } from "@/lib/demo-store";
 import { cn } from "@/lib/utils";
 
 type Path = "/price-book" | "/invoice-check" | "/findings" | "/legal";
 
 export function GuidedDemo() {
   const { state, setRole, setGuideDismissed } = useDemo();
+  const rows = useInvestigations();
   const navigate = useNavigate();
-  const f = (fx: string) => state.findings.filter((x) => x.fixtureId === fx);
+  const f = (fx: string) => rows.filter((x) => x.assessment.fixtureId === fx);
+  const checked = (fx: string) => state.assessments.some((a) => a.fixtureId === fx);
 
   const steps: { text: string; hint?: string; done: boolean; role: RoleId; to: Path }[] = [
     {
-      text: "Procurement: open the Price Book and verify T02 and T04.",
-      done: state.terms["T02"]?.status === "Verified" && state.terms["T04"]?.status === "Verified",
+      text: "Procurement: in the Price Book, verify T02 and T04 and confirm their override links.",
+      done: ["T02", "T04"].every(
+        (id) => state.terms[id]?.status === "Verified" && state.terms[id]?.override?.confirmed,
+      ),
       role: "procurement",
       to: "/price-book",
     },
@@ -29,31 +33,31 @@ export function GuidedDemo() {
       to: "/invoice-check",
     },
     {
-      text: "Finance: raise the finding.",
+      text: "Finance: raise an investigation.",
       done: f("S01").length > 0,
       role: "finance",
       to: "/invoice-check",
     },
     {
-      text: "Procurement: confirm the finding.",
-      done: f("S01").some((x) => x.status === "Confirmed"),
+      text: "Procurement: confirm or dismiss it with a reason.",
+      done: f("S01").some((x) => x.investigation.decisions.length > 0),
       role: "procurement",
       to: "/findings",
     },
     {
-      text: 'Finance: load S07 and see "Needs information". Then Procurement supplies the delivery center and the same finding recalculates.',
-      done: f("S07").some((x) => x.factsSupplied),
+      text: 'Finance: check S07, see "Needs information" and Request review. Procurement supplies the delivery center and the same check gets a new version.',
+      done: f("S07").some((x) => x.assessment.facts.length > 0),
       role: f("S07").length ? "procurement" : "finance",
       to: f("S07").length ? "/findings" : "/invoice-check",
     },
     {
-      text: 'Finance: load S09 and see "Needs Legal". Procurement escalates it.',
-      done: f("S09").some((x) => x.escalated),
-      role: f("S09").length ? "procurement" : "finance",
-      to: f("S09").length ? "/findings" : "/invoice-check",
+      text: "Finance: check S09 and Request review. Procurement reviews clauses T06 to T09 and sends the conflict to Legal.",
+      done: checked("S09") && state.conflictCases["C1"]?.status !== "Open",
+      role: checked("S09") ? "procurement" : "finance",
+      to: checked("S09") ? "/price-book" : "/invoice-check",
     },
     {
-      text: "Legal: record a ruling and watch the finding change.",
+      text: "Legal: record a ruling and watch the check get a new version.",
       done: Boolean(state.rulings["C1"]),
       role: "legal",
       to: "/legal",

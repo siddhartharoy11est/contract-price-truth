@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertCircle, ArrowRight, CheckCircle2, FileCheck2, FileText, Scale } from "lucide-react";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
-import { Chip, FindingStatusChip } from "@/components/app/chips";
+import { Chip } from "@/components/app/chips";
 import { CONFLICTS, DOCUMENTS, TERMS, docById, termById } from "@/data/seed";
+import type { ActivityEvent } from "@/lib/workflow";
 import { useDemo, useDerived } from "@/lib/demo-store";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ function MetricCard({
   value: string | number;
   detail: string;
   to: "/price-book" | "/findings" | "/legal";
-  search?: { tab: "pending" | "open" | "legal" | "confirmed" };
+  search?: { tab: "pending" | "open" | "legal" | "confirmed" | "clauses" };
   hash?: string;
   tone?: "default" | "warning" | "success";
 }) {
@@ -84,7 +85,7 @@ function ActionRow({
   detail: string;
   action: string;
   to: "/price-book" | "/findings" | "/legal" | "/invoice-check";
-  search?: { tab: "pending" | "open" | "legal" | "confirmed" };
+  search?: { tab: "pending" | "open" | "legal" | "confirmed" | "clauses" };
   hash?: string;
   icon?: ReactNode;
 }) {
@@ -187,26 +188,16 @@ function DocumentBars() {
 
 function RecentActivity() {
   const { state } = useDemo();
-  const events = [
-    ...Object.entries(state.terms).flatMap(([id, term]) =>
-      term.history.map((event) => ({
-        at: event.at,
-        actor: event.by,
-        text: `${termById(id)?.title ?? id}: ${event.action}`,
-        to: "/price-book" as const,
-        hash: id,
-      })),
-    ),
-    ...state.findings.flatMap((finding) =>
-      finding.timeline.map((event) => ({
-        at: event.at,
-        actor: event.by,
-        text: `${finding.id}: ${event.text}`,
-        to: "/findings" as const,
-        hash: finding.id,
-      })),
-    ),
-  ]
+  const linkFor = (ref: ActivityEvent["ref"]) =>
+    ref?.kind === "term"
+      ? { to: "/price-book" as const, hash: ref.id }
+      : ref?.kind === "investigation"
+        ? { to: "/findings" as const, hash: ref.id }
+        : ref?.kind === "conflict"
+          ? { to: "/legal" as const, hash: ref.id }
+          : { to: "/invoice-check" as const, hash: "" };
+  const events = state.activity
+    .map((e) => ({ at: e.at, actor: e.by, text: e.text, ...linkFor(e.ref) }))
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 6);
   return (
@@ -265,14 +256,14 @@ function RecentActivity() {
 function ProcurementDashboard() {
   const { state } = useDemo();
   const d = useDerived();
-  const activeConflicts = CONFLICTS.filter((c) => !state.rulings[c.id]).length;
-  const activeInvestigations = state.findings.filter(
-    (f) => f.status === "Open" || f.status === "With Legal",
-  ).length;
+  const activeConflicts = d.conflictsOpen;
+  const activeInvestigations = d.openInvestigations;
   const proposedAmendmentRates = TERMS.filter(
     (t) => t.docId === "BH-AMD-01-2026" && state.terms[t.id]?.status === "Proposed",
   );
-  const coverage = d.totalTerms ? Math.round((d.verified / d.totalTerms) * 100) : 0;
+  const rateTerms = TERMS.filter((t) => t.kind === "rate" && t.initialStatus !== "Ignored");
+  const rateVerified = rateTerms.filter((t) => state.terms[t.id]?.status === "Verified").length;
+  const coverage = rateTerms.length ? Math.round((rateVerified / rateTerms.length) * 100) : 0;
   const actions: ReactNode[] = [];
   if (proposedAmendmentRates.length)
     actions.push(
@@ -292,27 +283,29 @@ function ProcurementDashboard() {
         key={conflict.id}
         title="BrightHire annual adjustment: contractual conflict requiring review"
         detail={
-          state.escalations[conflict.id]
-            ? `Escalated by ${state.escalations[conflict.id]!.by}. Awaiting Legal decision.`
-            : "Fixed-rate and annual-adjustment clauses compete."
+          state.conflictCases[conflict.id]?.status === "With Legal"
+            ? "Sent to Legal. Awaiting a ruling."
+            : "Fixed-rate and annual-adjustment clauses compete. Review the clauses."
         }
-        action={state.escalations[conflict.id] ? "View conflict" : "Review conflict"}
-        to={state.escalations[conflict.id] ? "/legal" : "/price-book"}
+        action={
+          state.conflictCases[conflict.id]?.status === "With Legal"
+            ? "View conflict"
+            : "Review clauses"
+        }
+        to={state.conflictCases[conflict.id]?.status === "With Legal" ? "/legal" : "/price-book"}
         hash={conflict.id}
         icon={<Scale className="size-4" />}
       />,
     );
-  for (const finding of state.findings
-    .filter((f) => f.status === "Open" || f.status === "With Legal")
-    .slice(0, 3))
+  for (const r of d.rows.filter((x) => x.status === "Open" || x.status === "Reopened").slice(0, 3))
     actions.push(
       <ActionRow
-        key={finding.id}
-        title={`${finding.id}: invoice pricing investigation`}
-        detail={`${finding.line.grade} · ${finding.line.location || "Location not stated"} · Raised ${formatDate(finding.createdAt.slice(0, 10))}`}
+        key={r.investigation.id}
+        title={`${r.investigation.id}: ${r.kind}`}
+        detail={`${r.latest.inputs.line.grade} · ${r.latest.inputs.line.location || "Location not stated"} · Raised ${formatDate(r.investigation.createdAt.slice(0, 10))}`}
         action="Open investigation"
         to="/findings"
-        hash={finding.id}
+        hash={r.investigation.id}
       />,
     );
 
@@ -320,19 +313,19 @@ function ProcurementDashboard() {
     <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Pricing terms awaiting verification"
-          value={d.toVerify}
-          detail="AI-proposed terms requiring Procurement review"
+          label="Rate terms awaiting verification"
+          value={d.rateToVerify}
+          detail={`Plus ${d.clausesToReview} clause items awaiting review`}
           to="/price-book"
           search={{ tab: "pending" }}
-          tone={d.toVerify ? "warning" : "default"}
+          tone={d.rateToVerify ? "warning" : "default"}
         />
         <MetricCard
-          label="Active contractual conflicts"
+          label="Open conflicts"
           value={activeConflicts}
-          detail="Undecided clauses affecting price applicability"
+          detail="Clauses competing over price applicability"
           to="/price-book"
-          hash="C1"
+          search={{ tab: "clauses" }}
         />
         <MetricCard
           label="Open investigations"
@@ -342,9 +335,9 @@ function ProcurementDashboard() {
           search={{ tab: "open" }}
         />
         <MetricCard
-          label="Verified pricing coverage"
+          label="Coverage (prototype proxy)"
           value={`${coverage}%`}
-          detail={`${d.verified} of ${d.totalTerms} countable terms verified`}
+          detail={`${rateVerified} of ${rateTerms.length} signed rate terms verified`}
           to="/price-book"
           tone="success"
         />
@@ -393,21 +386,21 @@ function FinanceDashboard() {
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard
-          label="Investigations raised"
-          value={state.findings.length}
+          label="Investigations"
+          value={d.rows.length}
           detail="Saved from Invoice Check in this session"
           to="/findings"
         />
         <MetricCard
           label="Open investigations"
-          value={d.openFindings}
+          value={d.openInvestigations}
           detail="Awaiting Procurement attention"
           to="/findings"
           search={{ tab: "open" }}
         />
         <MetricCard
           label="Confirmed discrepancies"
-          value={state.findings.filter((f) => f.status === "Confirmed").length}
+          value={d.rows.filter((r) => r.status === "Confirmed").length}
           detail="Recovery is not tracked"
           to="/findings"
           search={{ tab: "confirmed" }}
@@ -424,14 +417,14 @@ function FinanceDashboard() {
           to="/invoice-check"
           icon={<FileCheck2 className="size-4" />}
         />
-        {state.findings.slice(0, 4).map((f) => (
+        {d.rows.slice(0, 4).map((r) => (
           <ActionRow
-            key={f.id}
-            title={`${f.id}: ${f.line.grade}, ${f.line.location || "location not stated"}`}
-            detail={f.timeline.at(-1)?.text ?? "Investigation raised"}
+            key={r.investigation.id}
+            title={`${r.investigation.id}: ${r.kind}, ${r.status}`}
+            detail={`Version ${r.latest.n}: ${r.latest.result.status}`}
             action="View status"
             to="/findings"
-            hash={f.id}
+            hash={r.investigation.id}
           />
         ))}
       </section>
@@ -444,13 +437,15 @@ function FinanceDashboard() {
 
 function LegalDashboard() {
   const { state } = useDemo();
-  const escalated = CONFLICTS.filter((c) => state.escalations[c.id] || state.rulings[c.id]);
+  const escalated = CONFLICTS.filter(
+    (c) => (state.conflictCases[c.id]?.status ?? "Open") !== "Open",
+  );
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2">
         <MetricCard
           label="Awaiting Legal decision"
-          value={CONFLICTS.filter((c) => state.escalations[c.id] && !state.rulings[c.id]).length}
+          value={CONFLICTS.filter((c) => state.conflictCases[c.id]?.status === "With Legal").length}
           detail="Escalated contractual conflicts"
           to="/legal"
           tone="warning"
