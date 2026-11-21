@@ -366,6 +366,14 @@ function Navigation({
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { hydrated, state, role, reset, setAccountSelected } = useDemo();
+  const confirmReset = () => {
+    if (
+      window.confirm(
+        "Reset the demo? This clears your verifications, investigations, decisions, uploaded documents and history in this browser.",
+      )
+    )
+      reset();
+  };
   useDerived();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -445,6 +453,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label="Search contracts and suppliers"
             />
           </form>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1.5 px-2.5 text-xs"
+            onClick={confirmReset}
+            aria-label="Reset demo"
+            title="Reset demo: clears your changes and uploads in this browser"
+          >
+            <RotateCcw className="size-3.5" />
+            <span className="hidden sm:inline">Reset demo</span>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -459,7 +478,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </span>
                 <span className="hidden xl:block">
                   <span className="block text-xs font-medium">{role.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">{role.short}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {role.short} · simulated
+                  </span>
                 </span>
                 <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
               </button>
@@ -490,16 +511,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </DropdownMenuItem>
               <ThemeToggle />
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  if (
-                    window.confirm(
-                      "Reset the demo? This clears your verifications, investigations, decisions and history.",
-                    )
-                  )
-                    reset();
-                }}
-              >
+              <DropdownMenuItem onSelect={confirmReset}>
                 <RotateCcw />
                 Reset demo data
               </DropdownMenuItem>
