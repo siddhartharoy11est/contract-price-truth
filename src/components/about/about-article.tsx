@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { groupSections, parseInline, type Block, type Inline } from "@/lib/about-content";
-import { WorkedExample } from "./calculators";
+import { AutonomyCalculator, WorkedExample } from "./calculators";
 import { ProgressRail } from "./progress-rail";
 import { MetricTree, ProblemFlow, Sensitivity, Trajectory } from "./about-visuals";
 
@@ -173,6 +173,13 @@ export function BlockView({
     case "table":
       if (heading.startsWith("A worked example"))
         return <WorkedExample labels={block.rows.map((r) => r[0] ?? "")} />;
+      if (heading === "How much freedom the AI earns")
+        return (
+          <>
+            <ContentTable head={block.head} align={block.align} rows={block.rows} label={heading} />
+            <AutonomyCalculator />
+          </>
+        );
       return (
         <ContentTable head={block.head} align={block.align} rows={block.rows} label={heading} />
       );

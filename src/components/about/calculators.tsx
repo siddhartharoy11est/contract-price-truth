@@ -1,6 +1,14 @@
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import { formatRupees, readWhole, WORKED_DEFAULTS, workedExample } from "@/lib/about-calculators";
+import {
+  AUTONOMY_DEFAULTS,
+  autonomyLevel,
+  formatRupees,
+  LEVEL_NAMES,
+  readWhole,
+  WORKED_DEFAULTS,
+  workedExample,
+} from "@/lib/about-calculators";
 import { groupIndian } from "@/lib/money";
 
 /** Optional calculators on the About page. The page reads fully without touching them. */
@@ -131,6 +139,137 @@ export function WorkedExample({ labels }: { labels: string[] }) {
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+export function RangeField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  display,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  display: string;
+}) {
+  const id = useId();
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <label htmlFor={id} className="text-[13px] font-medium">
+          {label}
+        </label>
+        <output htmlFor={id} className="text-sm font-semibold tabular-nums">
+          {display}
+        </output>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-6 w-full cursor-pointer accent-[var(--s1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      />
+    </div>
+  );
+}
+
+function LevelRow({ title, open, missing }: { title: string; open: boolean; missing: string[] }) {
+  const Icon = open ? CheckCircle2 : Lock;
+  return (
+    <li className="rounded-md border px-3 py-2.5">
+      <div className="flex items-center gap-2 font-medium">
+        <Icon
+          aria-hidden="true"
+          className="size-4 shrink-0"
+          style={{ color: open ? "var(--s1)" : "var(--color-muted-foreground)" }}
+        />
+        <span>{title}</span>
+        <span className="ml-auto text-[13px] font-normal text-muted-foreground">
+          {open ? "Unlocked" : "Locked"}
+        </span>
+      </div>
+      {!open && missing.length > 0 && (
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-6 text-[13px] text-muted-foreground">
+          {missing.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** Section 4.1: which autonomy level the measured numbers would unlock. */
+export function AutonomyCalculator() {
+  const [v, setV] = useState(AUTONOMY_DEFAULTS);
+  const r = autonomyLevel(v);
+  const set = (k: keyof typeof v) => (n: number) => setV((prev) => ({ ...prev, [k]: n }));
+
+  return (
+    <div className="my-4 rounded-lg border p-4" data-testid="calc-autonomy">
+      <Hint>Drag to see what unlocks</Hint>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <RangeField
+          label="AI terms accepted without edit"
+          value={v.acceptedPct}
+          min={0}
+          max={100}
+          step={1}
+          onChange={set("acceptedPct")}
+          display={`${v.acceptedPct}%`}
+        />
+        <RangeField
+          label="Terms reviewed"
+          value={v.termsReviewed}
+          min={0}
+          max={400}
+          step={1}
+          onChange={set("termsReviewed")}
+          display={String(v.termsReviewed)}
+        />
+        <RangeField
+          label="Wrong in the sample"
+          value={v.wrongPct}
+          min={0}
+          max={5}
+          step={0.1}
+          onChange={set("wrongPct")}
+          display={`${v.wrongPct.toFixed(1)}%`}
+        />
+      </div>
+      {r.level2Unlocked && (
+        <div className="mt-4 sm:max-w-sm">
+          <RangeField
+            label="Days stable with zero false clears"
+            value={v.daysStable}
+            min={0}
+            max={120}
+            step={1}
+            onChange={set("daysStable")}
+            display={`${v.daysStable} days`}
+          />
+        </div>
+      )}
+      <ul className="mt-4 space-y-2 text-sm">
+        <LevelRow title={LEVEL_NAMES[1]} open missing={[]} />
+        <LevelRow title={LEVEL_NAMES[2]} open={r.level2Unlocked} missing={r.level2Missing} />
+        <LevelRow title={LEVEL_NAMES[3]} open={r.level3Unlocked} missing={r.level3Missing} />
+      </ul>
+      <p className="mt-3 text-sm font-medium" aria-live="polite">
+        Current level: {LEVEL_NAMES[r.level]}
+      </p>
     </div>
   );
 }
