@@ -1,5 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertCircle, ArrowRight, CheckCircle2, FileCheck2, FileText, Scale } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  FileCheck2,
+  FileText,
+  Info,
+  Scale,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip } from "@/components/app/chips";
@@ -511,7 +519,20 @@ function Home() {
           };
   return (
     <div>
-      <PageHeader title={copy.title}>{copy.subtitle}</PageHeader>
+      <PageHeader
+        title={copy.title}
+        actions={
+          <Link
+            to="/about"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <Info className="size-3.5" aria-hidden />
+            About This Project
+          </Link>
+        }
+      >
+        {copy.subtitle}
+      </PageHeader>
       {role.id === "procurement" ? (
         <ProcurementDashboard />
       ) : role.id === "finance" ? (
