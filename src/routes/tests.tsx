@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip, ResultStatusChip } from "@/components/app/chips";
-import { runAllTests, TEST_CASES, type TestRun } from "@/lib/test-cases";
+import {
+  JOURNEY_CASES,
+  runAllJourneys,
+  runAllTests,
+  TEST_CASES,
+  type JourneyRun,
+  type TestRun,
+} from "@/lib/test-cases";
 import { formatINR } from "@/lib/money";
 
 export const Route = createFileRoute("/tests")({
@@ -41,13 +48,16 @@ function diffText(p: number | null | undefined): string {
 
 function TestsPage() {
   const [runs, setRuns] = useState<TestRun[] | null>(null);
+  const [journeys, setJourneys] = useState<JourneyRun[] | null>(null);
   const [ranAt, setRanAt] = useState<string>("");
   const run = () => {
     setRuns(runAllTests());
+    setJourneys(runAllJourneys());
     setRanAt(new Date().toLocaleTimeString());
   };
   useEffect(run, []);
   const passed = runs?.filter((r) => r.pass).length ?? 0;
+  const journeysPassed = journeys?.filter((r) => r.pass).length ?? 0;
 
   return (
     <div>
@@ -63,17 +73,24 @@ function TestsPage() {
         Runs the shared test list ({TEST_CASES.length} cases, PRD 8.1 and 8.2) against the pricing
         engine. Each case names its fixture state: SEED, VR (rate terms and override links
         verified), CR (clauses reviewed, conflict with Legal), RULED-A or RULED-B. The same list
-        drives the automated engine tests. Your own session is not used or changed.
+        drives the automated engine tests. It also walks {JOURNEY_CASES.length} journey cases
+        (Journeys A to D) through the real workflow. Everything runs on an isolated in-memory copy
+        of the seed with no network or model call. Your own session is not used or changed.
       </PageHeader>
 
-      {runs && (
-        <p className="mb-4 flex items-center gap-2 text-sm">
+      {runs && journeys && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-sm">
           <Chip tone={passed === runs.length ? "success" : "danger"}>
-            {passed} of {runs.length} passing
+            Scenarios: {passed} of {runs.length} passing
+          </Chip>
+          <Chip tone={journeysPassed === journeys.length ? "success" : "danger"}>
+            Journeys: {journeysPassed} of {journeys.length} passing
           </Chip>
           <span className="text-muted-foreground">Last run {ranAt}</span>
         </p>
       )}
+
+      <h2 className="mb-2 text-base font-semibold">Scenario cases (PRD 8.1 and 8.2)</h2>
 
       <div className="surface overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
@@ -143,6 +160,47 @@ function TestsPage() {
             })}
           </tbody>
         </table>
+      </div>
+
+      <h2 className="mb-1 mt-8 text-base font-semibold">Journey cases (PRD 5.1 to 5.4)</h2>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Each case runs a sequence of actions through the workflow and engine. Journey D uses the two
+        sample PDFs' page text and a fixed model output that still passes through the real quote
+        checks, so no live call is made. Expected checkpoints are listed beside the computed ones.
+      </p>
+      <div className="space-y-3">
+        {journeys?.map((r) => (
+          <section key={r.testCase.id} className="surface p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs font-medium">{r.testCase.id}</span>
+              <Chip>Journey {r.testCase.journey}</Chip>
+              <span className="flex-1 text-sm">{r.testCase.description}</span>
+              {r.pass ? <Chip tone="success">Pass</Chip> : <Chip tone="danger">Fail</Chip>}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="eyebrow mb-1">Expected</p>
+                <ol className="space-y-1 font-mono text-xs">
+                  {r.testCase.expected.map((x, i) => (
+                    <li key={i}>
+                      {i + 1}. {x}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              <div>
+                <p className="eyebrow mb-1">Actual</p>
+                <ol className="space-y-1 font-mono text-xs">
+                  {r.actual.map((x, i) => (
+                    <li key={i} className={x === r.testCase.expected[i] ? "" : "text-danger"}>
+                      {i + 1}. {x}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );
