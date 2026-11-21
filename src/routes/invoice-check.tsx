@@ -14,7 +14,9 @@ import { OTHER_LOCATION, type InvoiceLine } from "@/data/types";
 import { useDemo, useInvestigations } from "@/lib/demo-store";
 import { formatINR, parseHours, parseRupees } from "@/lib/money";
 import { formatTimestamp, isIsoDate } from "@/lib/dates";
-import type { Assessment } from "@/lib/workflow";
+import type { Assessment, InvestigationStatus } from "@/lib/workflow";
+import type { ResultStatus } from "@/lib/pricing-engine";
+import { roleById } from "@/data/roles";
 import { DEFAULT_SUPPLIER_ID } from "@/lib/pricing-engine";
 
 interface InvoiceCheckSearch {
@@ -415,47 +417,57 @@ function InvoiceCheckPage() {
                   supplyFact(assessment.id, { kind: "location", value: loc })
                 }
                 actions={
-                  investigation ? (
-                    <p className="flex flex-wrap items-center gap-2 text-sm">
-                      Investigation{" "}
-                      <Link
-                        to="/findings"
-                        hash={investigation.investigation.id}
-                        className="font-mono text-primary underline"
+                  <div className="space-y-3">
+                    {investigation ? (
+                      <HandoffConfirmation
+                        id={investigation.investigation.id}
+                        kind={investigation.kind}
+                        status={investigation.status}
+                      />
+                    ) : (
+                      st &&
+                      NEXT_STEP[st] && (
+                        <p className="text-sm font-medium" data-testid="next-step">
+                          Next: {NEXT_STEP[st]}
+                        </p>
+                      )
+                    )}
+                    {!investigation && st && st !== "Match" && st !== "Invalid input" && (
+                      <RoleGate
+                        role="finance"
+                        action="Requesting review or raising an investigation"
                       >
-                        {investigation.investigation.id}
-                      </Link>
-                      <span className="text-muted-foreground">{investigation.kind}</span>
-                      <InvestigationStatusChip status={investigation.status} />
-                    </p>
-                  ) : st && st !== "Match" && st !== "Invalid input" ? (
-                    <RoleGate role="finance" action="Requesting review or raising an investigation">
-                      <div className="flex flex-wrap items-center gap-3">
-                        {st === "Potential discrepancy" && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          {st === "Potential discrepancy" && (
+                            <Button
+                              onClick={() => {
+                                const id = raiseInvestigation(assessment.id);
+                                if (id) toast.success(`Investigation ${id} raised for Procurement`);
+                              }}
+                            >
+                              Raise investigation
+                            </Button>
+                          )}
                           <Button
+                            variant={st === "Potential discrepancy" ? "outline" : "default"}
                             onClick={() => {
-                              const id = raiseInvestigation(assessment.id);
-                              if (id) toast.success(`Investigation ${id} raised for Procurement`);
+                              const id = requestReview(assessment.id);
+                              if (id) toast.success(`Review requested as ${id}`);
                             }}
                           >
-                            Raise investigation
+                            Request review
                           </Button>
-                        )}
-                        <Button
-                          variant={st === "Potential discrepancy" ? "outline" : "default"}
-                          onClick={() => {
-                            const id = requestReview(assessment.id);
-                            if (id) toast.success(`Review requested as ${id}`);
-                          }}
-                        >
-                          Request review
-                        </Button>
-                        <span className="text-xs text-muted-foreground">
-                          Goes to Procurement. Nothing is sent to the supplier.
-                        </span>
-                      </div>
-                    </RoleGate>
-                  ) : undefined
+                          <span className="text-xs text-muted-foreground">
+                            Goes to Procurement. Nothing is sent to the supplier.
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          This check is only saved. It becomes an investigation when you click
+                          Request review or Raise investigation.
+                        </p>
+                      </RoleGate>
+                    )}
+                  </div>
                 }
               />
               <VersionHistory assessment={assessment} />
@@ -463,6 +475,62 @@ function InvoiceCheckPage() {
           )}
           <SavedChecks openId={openId} onOpen={openSaved} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** What happens next for each result, shown under a saved check. */
+const NEXT_STEP: Partial<Record<ResultStatus, string>> = {
+  Match: "Nothing to do, the check is saved.",
+  "Potential discrepancy": "Click Request review to send this to Procurement.",
+  "Awaiting verification": "Click Request review to send this to Procurement.",
+  "Needs Legal": "Click Request review to send this to Procurement.",
+  "Needs information": "Click Request review to send this to Procurement.",
+};
+
+/** Shown once a check has become an investigation: who owns it now and how to get there. */
+function HandoffConfirmation({
+  id,
+  kind,
+  status,
+}: {
+  id: string;
+  kind: string;
+  status: InvestigationStatus;
+}) {
+  const { setRole } = useDemo();
+  const navigate = useNavigate();
+  const owner = roleById("procurement");
+  return (
+    <div
+      className="rounded-md border border-success/30 bg-success-soft/60 p-3 text-sm"
+      role="status"
+    >
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">
+          Investigation <span className="font-mono">{id}</span> created.
+        </span>
+        <span className="text-muted-foreground">{kind}</span>
+        <InvestigationStatusChip status={status} />
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Owner: {owner.short}, {owner.name}. Nothing was sent to the supplier and payment is not
+        blocked.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-3 text-xs font-medium">
+        <Link to="/findings" hash={id} className="text-primary underline underline-offset-2">
+          Open the investigation
+        </Link>
+        <button
+          className="text-primary underline underline-offset-2"
+          onClick={() => {
+            setRole("procurement");
+            void navigate({ to: "/findings", hash: id });
+          }}
+        >
+          Switch to Priya to see it
+        </button>
       </div>
     </div>
   );

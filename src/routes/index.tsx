@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FileCheck2,
   FileText,
+  Inbox,
   Info,
   Scale,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { Chip } from "@/components/app/chips";
 import { CONFLICTS, TERMS } from "@/data/seed";
 import type { ActivityEvent } from "@/lib/workflow";
 import { useDemo, useDerived } from "@/lib/demo-store";
+import { roleById } from "@/data/roles";
 import { DISPUTE_START } from "@/lib/demo-hints";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -264,6 +266,36 @@ function RecentActivity() {
   );
 }
 
+/** Tells a persona what another persona handed to them, with a link to it. */
+function HandoffBanner({
+  text,
+  to,
+  hash,
+  search,
+}: {
+  text: string;
+  to: "/findings" | "/legal";
+  hash?: string;
+  search?: { tab: "open" };
+}) {
+  return (
+    <Link
+      to={to}
+      {...(hash ? { hash } : {})}
+      {...(search ? { search } : {})}
+      className="mb-4 flex items-center gap-3 rounded-md border border-warning/40 bg-warning-soft px-4 py-3 text-sm hover:border-warning"
+      role="status"
+    >
+      <Inbox className="size-4 shrink-0 text-warning" aria-hidden />
+      <span className="flex-1 font-medium">{text}</span>
+      <span className="flex items-center gap-1 text-xs font-medium text-primary">
+        Open
+        <ArrowRight className="size-3.5" />
+      </span>
+    </Link>
+  );
+}
+
 function ProcurementDashboard() {
   const { state } = useDemo();
   const d = useDerived();
@@ -325,8 +357,23 @@ function ProcurementDashboard() {
       />,
     );
 
+  const fromDev = d.rows.filter(
+    (r) =>
+      r.investigation.createdBy === roleById("finance").name &&
+      (r.status === "Open" || r.status === "Reopened"),
+  );
+
   return (
     <>
+      {fromDev.length > 0 && (
+        <HandoffBanner
+          text={`Raised by Dev: ${fromDev.length} ${fromDev.length === 1 ? "investigation" : "investigations"}`}
+          to="/findings"
+          {...(fromDev.length === 1
+            ? { hash: fromDev[0]!.investigation.id }
+            : { search: { tab: "open" as const } })}
+        />
+      )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Rate terms awaiting verification"
@@ -396,15 +443,20 @@ function ProcurementDashboard() {
 }
 
 function FinanceDashboard() {
-  const { state } = useDemo();
   const d = useDerived();
+  const dev = roleById("finance").name;
+  const raised = d.rows.filter((r) => r.investigation.createdBy === dev).length;
+  const withProcurement = d.rows.filter(
+    (r) => r.status === "Open" || r.status === "Reopened",
+  ).length;
+  const withLegal = d.rows.filter((r) => r.status === "With Legal").length;
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard
-          label="Investigations"
-          value={d.rows.length}
-          detail="Saved from Invoice Check in this session"
+          label="Investigations raised by Finance"
+          value={raised}
+          detail="Created with Request review or Raise investigation"
           to="/findings"
         />
         <MetricCard
@@ -422,6 +474,10 @@ function FinanceDashboard() {
           search={{ tab: "confirmed" }}
         />
       </div>
+      <p className="surface px-4 py-3 text-sm" data-testid="waiting-on-others">
+        <span className="font-medium">Waiting on others: </span>
+        {withProcurement} with Procurement (Priya Nair), {withLegal} with Legal (Anika Rao).
+      </p>
       <section className="surface overflow-hidden">
         <div className="border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Finance workspace</h2>
@@ -456,8 +512,23 @@ function LegalDashboard() {
   const escalated = CONFLICTS.filter(
     (c) => (state.conflictCases[c.id]?.status ?? "Open") !== "Open",
   );
+  const waiting = escalated.filter((c) => !state.rulings[c.id]);
+  const by = [
+    ...new Set(
+      waiting.flatMap(
+        (c) => state.conflictCases[c.id]?.questions.map((q) => q.by.split(" ")[0]) ?? [],
+      ),
+    ),
+  ];
   return (
     <div className="space-y-5">
+      {waiting.length > 0 && (
+        <HandoffBanner
+          text={`Escalated by ${by.join(" and ") || "Procurement"}: ${waiting.length} ${waiting.length === 1 ? "conflict" : "conflicts"}`}
+          to="/legal"
+          hash={waiting[0]!.id}
+        />
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <MetricCard
           label="Awaiting Legal decision"

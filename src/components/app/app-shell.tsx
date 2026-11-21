@@ -55,8 +55,24 @@ type NavPath =
   | "/legal"
   | "/tests"
   | "/about";
-type NavItem = { to: NavPath; label: string; icon: LucideIcon; search?: { tab: "pending" } };
-type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
+type NavItem = {
+  to: NavPath;
+  label: string;
+  icon: LucideIcon;
+  search?: { tab: "pending" | "clauses" };
+};
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];
+  readOnly?: boolean;
+};
+
+/** Dev and Anika see Repository and Pricing read only. Only Procurement changes them. */
+const READ_ONLY_PATHS = ["/documents", "/suppliers", "/price-book"];
+const isReadOnlyFor = (role: RoleId, pathname: string) =>
+  role !== "procurement" && READ_ONLY_PATHS.some((p) => pathname.startsWith(p));
 
 const PAGE_TITLES: [string, string][] = [
   ["/documents/", "Document details"],
@@ -194,33 +210,42 @@ function Navigation({
   const { state } = useDemo();
   const pathname = useLocation({ select: (l) => l.pathname });
   const groups: NavGroup[] = [];
-  if (state.role !== "legal") {
-    groups.push({
-      id: "repository",
-      label: "Repository",
-      icon: FolderOpen,
-      items: [
-        { to: "/documents", label: "All Contracts", icon: FileText },
-        { to: "/suppliers", label: "Suppliers", icon: Users },
-      ],
-    });
-  }
-  if (state.role === "procurement") {
-    groups.push({
-      id: "pricing",
-      label: "Pricing",
-      icon: CircleDollarSign,
-      items: [
-        { to: "/price-book", label: "Price Book", icon: BookOpenCheck },
-        {
-          to: "/price-book",
-          label: "Verification Queue",
-          icon: FileCheck2,
-          search: { tab: "pending" },
-        },
-      ],
-    });
-  }
+  const readOnly = state.role !== "procurement";
+  groups.push({
+    id: "repository",
+    label: "Repository",
+    icon: FolderOpen,
+    readOnly,
+    items: [
+      { to: "/documents", label: "All Contracts", icon: FileText },
+      { to: "/suppliers", label: "Suppliers", icon: Users },
+    ],
+  });
+  groups.push({
+    id: "pricing",
+    label: "Pricing",
+    icon: CircleDollarSign,
+    readOnly,
+    items: readOnly
+      ? [
+          { to: "/price-book", label: "Price Book", icon: BookOpenCheck },
+          {
+            to: "/price-book",
+            label: "Contractual Clauses",
+            icon: Scale,
+            search: { tab: "clauses" },
+          },
+        ]
+      : [
+          { to: "/price-book", label: "Price Book", icon: BookOpenCheck },
+          {
+            to: "/price-book",
+            label: "Verification Queue",
+            icon: FileCheck2,
+            search: { tab: "pending" },
+          },
+        ],
+  });
   if (state.role !== "legal") {
     groups.push({
       id: "operations",
@@ -312,6 +337,11 @@ function Navigation({
                     <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wide">
                       {group.label}
                     </span>
+                    {group.readOnly && (
+                      <span className="rounded border border-sidebar-border px-1.5 text-[10px] font-normal normal-case tracking-normal">
+                        Read only
+                      </span>
+                    )}
                     <ChevronDown
                       className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
                     />

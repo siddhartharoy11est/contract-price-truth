@@ -94,7 +94,7 @@ const rowsOf = ({
 const selectClass = "h-9 rounded-md border border-input bg-card px-2.5 text-xs text-foreground";
 
 function DocumentsPage() {
-  const { catalog } = useDemo();
+  const { catalog, role } = useDemo();
   const ROWS = useMemo(() => rowsOf(catalog), [catalog]);
   const { documents: DOCUMENTS, suppliers: SUPPLIERS } = catalog;
   const searchParams = Route.useSearch();
@@ -149,7 +149,10 @@ function DocumentsPage() {
 
   return (
     <div>
-      <PageHeader title="All Contracts" actions={<UploadContractDialog />}>
+      <PageHeader
+        title="All Contracts"
+        actions={role.id === "procurement" ? <UploadContractDialog /> : undefined}
+      >
         A searchable repository of supplier documents. Signing status is declared, not
         cryptographically checked. Seed documents use a Stored extraction. Uploaded documents use a
         Live extraction.

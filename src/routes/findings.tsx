@@ -126,13 +126,13 @@ function InvestigationsPage() {
             <ClipboardList className="mx-auto mb-3 size-7 text-muted-foreground" />
             <p className="text-sm font-semibold">No investigations yet</p>
             <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-              In Invoice Check, Request review on any result other than Match, or Raise
-              investigation on a Potential discrepancy.
+              They appear when Finance clicks Request review or Raise investigation on an invoice
+              check. Try Invoice Check, example S09.
             </p>
             <Button asChild size="sm" className="mt-4">
-              <Link to="/invoice-check">
+              <Link to="/invoice-check" search={{ example: "S09" }}>
                 <FilePlus2 />
-                Open Invoice Check
+                Try Invoice Check with S09
               </Link>
             </Button>
           </div>
