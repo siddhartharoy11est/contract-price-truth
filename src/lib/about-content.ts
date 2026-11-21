@@ -193,3 +193,20 @@ export function parseInline(text: string): Inline[] {
 export function plainText(text: string): string {
   return text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
 }
+
+export type Section = { id: string; title: string; blocks: Block[] };
+
+export function groupSections(blocks: Block[]): { intro: Block[]; sections: Section[] } {
+  const intro: Block[] = [];
+  const sections: Section[] = [];
+  for (const b of blocks) {
+    if (b.type === "heading" && b.level === 2) {
+      sections.push({ id: b.id, title: b.text, blocks: [b] });
+    } else if (sections.length) {
+      sections[sections.length - 1]?.blocks.push(b);
+    } else {
+      intro.push(b);
+    }
+  }
+  return { intro, sections };
+}

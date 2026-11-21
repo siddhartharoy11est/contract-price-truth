@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
-import { parseInline, type Block, type Inline } from "@/lib/about-content";
+import { groupSections, parseInline, type Block, type Inline } from "@/lib/about-content";
+import { ProgressRail } from "./progress-rail";
 import { MetricTree, ProblemFlow, Sensitivity, Trajectory } from "./about-visuals";
 
 /** Renders the parsed About content. Wording comes only from the content file. */
@@ -212,23 +213,6 @@ function Greeting({ text }: { text: string }) {
   );
 }
 
-type Section = { id: string; title: string; blocks: Block[] };
-
-export function groupSections(blocks: Block[]): { intro: Block[]; sections: Section[] } {
-  const intro: Block[] = [];
-  const sections: Section[] = [];
-  for (const b of blocks) {
-    if (b.type === "heading" && b.level === 2) {
-      sections.push({ id: b.id, title: b.text, blocks: [b] });
-    } else if (sections.length) {
-      sections[sections.length - 1]?.blocks.push(b);
-    } else {
-      intro.push(b);
-    }
-  }
-  return { intro, sections };
-}
-
 export function AboutArticle({
   blocks,
   validationLink,
@@ -255,16 +239,23 @@ export function AboutArticle({
   };
 
   return (
-    <article
-      className="min-w-0 text-[15px] [--s1:#2a78d6] [--s2:#eb6834] dark:[--s1:#3987e5] dark:[--s2:#d95926]"
-      data-testid="about-article"
-    >
-      {renderList(intro, false)}
-      {sections.map((s, n) => (
-        <section key={s.id} data-section={s.id}>
-          {renderList(s.blocks, n === 0)}
-        </section>
-      ))}
-    </article>
+    <div className="min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,1fr)_11rem] min-[1100px]:gap-10">
+      <article
+        className="min-w-0 text-[15px] [--s1:#2a78d6] [--s2:#eb6834] dark:[--s1:#3987e5] dark:[--s2:#d95926]"
+        data-testid="about-article"
+      >
+        {renderList(intro, false)}
+        {sections.map((s, n) => (
+          <section key={s.id} data-section={s.id}>
+            {renderList(s.blocks, n === 0)}
+          </section>
+        ))}
+      </article>
+      <ProgressRail
+        sections={sections
+          .filter((s) => /^section-\d+$/.test(s.id))
+          .map((s) => ({ id: s.id, title: s.title }))}
+      />
+    </div>
   );
 }
