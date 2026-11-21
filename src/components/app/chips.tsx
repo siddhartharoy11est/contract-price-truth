@@ -32,7 +32,7 @@ export function Chip({
 }: {
   tone?: ChipTone;
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return <span className={cn(chipVariants({ tone }), className)}>{children}</span>;
 }
@@ -72,11 +72,22 @@ export function InvestigationStatusChip({ status }: { status: InvestigationStatu
   return <Chip tone={investigationTone[status]}>{status}</Chip>;
 }
 
-export function SourceLabel({ live }: { live: boolean }) {
+/** Every extraction result, term and run is labelled Stored (seed) or Live (uploaded), PRD M3.6. */
+export function SourceLabel({
+  live,
+  className,
+}: {
+  live: boolean;
+  className?: string | undefined;
+}) {
   return live ? (
-    <Chip tone="primary">Live result</Chip>
+    <Chip tone="primary" className={className}>
+      Live (uploaded)
+    </Chip>
   ) : (
-    <Chip tone="neutral">Stored extraction</Chip>
+    <Chip tone="neutral" className={className}>
+      Stored (seed)
+    </Chip>
   );
 }
 

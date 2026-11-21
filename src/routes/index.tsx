@@ -3,7 +3,7 @@ import { AlertCircle, ArrowRight, CheckCircle2, FileCheck2, FileText, Scale } fr
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip } from "@/components/app/chips";
-import { CONFLICTS, DOCUMENTS, TERMS, docById, termById } from "@/data/seed";
+import { CONFLICTS, TERMS } from "@/data/seed";
 import type { ActivityEvent } from "@/lib/workflow";
 import { useDemo, useDerived } from "@/lib/demo-store";
 import { formatDate, formatTimestamp } from "@/lib/dates";
@@ -112,7 +112,8 @@ function ActionRow({
 }
 
 function StatusBars() {
-  const { state } = useDemo();
+  const { state, catalog } = useDemo();
+  const TERMS = catalog.terms;
   const statuses = ["Verified", "Proposed", "Needs review", "Ignored"] as const;
   const counts = statuses.map((status) => ({
     status,
@@ -155,6 +156,7 @@ function StatusBars() {
 }
 
 function DocumentBars() {
+  const DOCUMENTS = useDemo().catalog.documents;
   const kinds = [...new Set(DOCUMENTS.map((d) => d.kind))];
   return (
     <section className="surface p-4">

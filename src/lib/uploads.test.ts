@@ -20,14 +20,16 @@ import {
 
 const priya: Actor = { by: "Priya", role: "procurement", at: "2026-11-21T10:00:00Z" };
 
-
 function vrState(): WorkflowState {
   const { states, rulings } = fixtureState("VR");
   return {
     ...seedWorkflow(),
     terms: states,
     rulings: Object.fromEntries(
-      Object.entries(rulings).map(([k, r]) => [k, { reading: r!, reasoning: "x", by: "Anika", at: priya.at }]),
+      Object.entries(rulings).map(([k, r]) => [
+        k,
+        { reading: r!, reasoning: "x", by: "Anika", at: priya.at },
+      ]),
     ),
   };
 }
@@ -60,8 +62,18 @@ describe("Journey D on the real engine", () => {
       pages: ORBIS_PAGES,
     });
     ws = up.state;
-    const fabricated: ExtractedTerm = { ...orbisTerms()[0]!, role: "Night Guard", amount: 999, quote: "Role: Night Guard. Rate: INR 999 per hour." };
-    const run = applyExtraction(ws, priya, up.docId, response([...orbisTerms(), fabricated], ORBIS_PAGES));
+    const fabricated: ExtractedTerm = {
+      ...orbisTerms()[0]!,
+      role: "Night Guard",
+      amount: 999,
+      quote: "Role: Night Guard. Rate: INR 999 per hour.",
+    };
+    const run = applyExtraction(
+      ws,
+      priya,
+      up.docId,
+      response([...orbisTerms(), fabricated], ORBIS_PAGES),
+    );
     ws = run.state;
     const r = ws.uploads.runs.at(-1)!;
     expect(r.status).toBe("Completed");
@@ -109,7 +121,11 @@ describe("Journey D on the real engine", () => {
       pages: ORBIS_PAGES,
     });
     ws = up.state;
-    const out = applyExtraction(ws, priya, up.docId, { ok: false, code: "capacity", message: "Live extraction has reached today's limit." });
+    const out = applyExtraction(ws, priya, up.docId, {
+      ok: false,
+      code: "capacity",
+      message: "Live extraction has reached today's limit.",
+    });
     expect(out.state.uploads.runs.at(-1)).toMatchObject({ status: "Failed", code: "capacity" });
     expect(out.state.uploads.terms).toEqual([]);
     expect(out.state.terms).toEqual(ws.terms);
@@ -126,9 +142,19 @@ describe("Journey D on the real engine", () => {
       signingStatus: "Signed",
       pages: AMENDMENT_3_PAGES,
     });
-    ws = applyExtraction(up.state, priya, up.docId, response(amendment3Terms(), AMENDMENT_3_PAGES)).state;
+    ws = applyExtraction(
+      up.state,
+      priya,
+      up.docId,
+      response(amendment3Terms(), AMENDMENT_3_PAGES),
+    ).state;
     const amd = ws.uploads.terms[0]!;
-    expect(amd).toMatchObject({ grade: "L2", location: "Hyderabad", ratePaise: 50000, effectiveFrom: "2026-11-01" });
+    expect(amd).toMatchObject({
+      grade: "L2",
+      location: "Hyderabad",
+      ratePaise: 50000,
+      effectiveFrom: "2026-11-01",
+    });
     expect(ws.terms[amd.id]!.status).toBe("Proposed");
     const r = evaluateLine(
       {
@@ -147,7 +173,15 @@ describe("Journey D on the real engine", () => {
     expect(r.blockers?.flatMap((b) => b.termIds)).toContain(amd.id);
     // Hyderabad only: a Pune line in the same month is not affected by the amendment.
     const pune = evaluateLine(
-      { grade: "L4", location: "Pune", serviceStart: "2026-11-01", serviceEnd: "2026-11-30", hours: 10, billedRatePaise: 120000, poRatePaise: null },
+      {
+        grade: "L4",
+        location: "Pune",
+        serviceStart: "2026-11-01",
+        serviceEnd: "2026-11-30",
+        hours: 10,
+        billedRatePaise: 120000,
+        poRatePaise: null,
+      },
       contextOf(ws),
     );
     expect(pune.status).toBe("Match");

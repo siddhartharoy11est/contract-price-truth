@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/page-header";
-import { Chip, DocStatusBadge } from "@/components/app/chips";
-import { DOCUMENTS, SUPPLIERS, TERMS } from "@/data/seed";
+import { Chip, DocStatusBadge, SourceLabel } from "@/components/app/chips";
+import { UploadContractDialog } from "@/components/app/upload-dialog";
 import type { ContractDocument } from "@/data/types";
+import { useDemo } from "@/lib/demo-store";
+import type { Catalog } from "@/lib/catalog";
 import { formatDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +52,11 @@ type RepositoryRow = {
 };
 type SortKey = "title" | "supplier" | "kind" | "status" | "effective";
 
-const ROWS: RepositoryRow[] = [
+const rowsOf = ({
+  documents: DOCUMENTS,
+  suppliers: SUPPLIERS,
+  terms: TERMS,
+}: Catalog): RepositoryRow[] => [
   ...DOCUMENTS.map((doc) => {
     const supplier = SUPPLIERS.find((s) => s.id === doc.supplierId)!;
     return {
@@ -88,6 +94,9 @@ const ROWS: RepositoryRow[] = [
 const selectClass = "h-9 rounded-md border border-input bg-card px-2.5 text-xs text-foreground";
 
 function DocumentsPage() {
+  const { catalog } = useDemo();
+  const ROWS = useMemo(() => rowsOf(catalog), [catalog]);
+  const { documents: DOCUMENTS, suppliers: SUPPLIERS } = catalog;
   const searchParams = Route.useSearch();
   const navigate = useNavigate();
   const [q, setQ] = useState(searchParams.q ?? "");
@@ -118,7 +127,7 @@ function DocumentsPage() {
       const bv = sort === "effective" ? (b.effective ?? "") : b[sort];
       return av.localeCompare(bv) * (ascending ? 1 : -1);
     });
-  }, [q, supplier, kind, status, sort, ascending]);
+  }, [ROWS, q, supplier, kind, status, sort, ascending]);
 
   const setSorting = (key: SortKey) => {
     if (sort === key) setAscending((v) => !v);
@@ -140,9 +149,10 @@ function DocumentsPage() {
 
   return (
     <div>
-      <PageHeader title="All Contracts">
+      <PageHeader title="All Contracts" actions={<UploadContractDialog />}>
         A searchable repository of supplier documents. Signing status is declared, not
-        cryptographically checked.
+        cryptographically checked. Seed documents use a Stored extraction. Uploaded documents use a
+        Live extraction.
       </PageHeader>
       <section className="surface overflow-hidden">
         <div className="flex flex-col gap-3 border-b p-4 xl:flex-row xl:items-center">
@@ -211,7 +221,7 @@ function DocumentsPage() {
           <span>
             {results.length} of {ROWS.length} document records
           </span>
-          <span>{DOCUMENTS.length} include stored source text</span>
+          <span>{DOCUMENTS.length} include source text</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] text-sm">
@@ -266,8 +276,9 @@ function DocumentsPage() {
                         ) : (
                           <span className="font-medium">{row.title}</span>
                         )}
-                        <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
                           {row.doc?.id ?? "Title only. No stored source text."}
+                          {row.doc && <SourceLabel live={row.doc.source === "Live"} />}
                         </span>
                       </div>
                     </div>

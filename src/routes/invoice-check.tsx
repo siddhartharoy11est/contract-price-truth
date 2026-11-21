@@ -9,7 +9,7 @@ import { ResultCard } from "@/components/app/result-card";
 import { VersionHistory } from "@/components/app/version-history";
 import { InvestigationStatusChip, ResultStatusChip, Chip } from "@/components/app/chips";
 import { FIXTURES, fixtureById } from "@/data/fixtures";
-import { ROLE_MAPS, SUPPLIERS, supplierById } from "@/data/seed";
+import type { RoleMapEntry } from "@/data/types";
 import { OTHER_LOCATION, type InvoiceLine } from "@/data/types";
 import { useDemo, useInvestigations } from "@/lib/demo-store";
 import { formatINR, parseHours, parseRupees } from "@/lib/money";
@@ -66,11 +66,9 @@ const EMPTY: FormState = {
 };
 
 const rupeeText = (p: number | null) => (p === null ? "" : String(p / 100));
-const roleMapOf = (supplierId: string) => ROLE_MAPS[supplierId] ?? [];
-
-function fromLine(line: InvoiceLine): FormState {
+function fromLine(line: InvoiceLine, roleMaps: Record<string, RoleMapEntry[]>): FormState {
   const supplierId = line.supplierId ?? DEFAULT_SUPPLIER_ID;
-  const known = roleMapOf(supplierId).some((r) => r.grade === line.grade);
+  const known = (roleMaps[supplierId] ?? []).some((r) => r.grade === line.grade);
   return {
     supplierId,
     start: line.serviceStart,
@@ -140,6 +138,7 @@ function InvoiceCheckPage() {
   const {
     evaluate,
     state,
+    catalog,
     saveCheck,
     supplyFact,
     requestReview,
@@ -171,7 +170,7 @@ function InvoiceCheckPage() {
   const loadExample = (id: string) => {
     const fx = fixtureById(id);
     if (!fx) return;
-    setForm(fromLine(fx.line));
+    setForm(fromLine(fx.line, catalog.roleMaps));
     setFixtureId(fx.id);
     setErrors([]);
     setOpenId(null);
@@ -187,14 +186,30 @@ function InvoiceCheckPage() {
 
   const openSaved = (a: Assessment) => {
     setOpenId(a.id);
-    setForm(fromLine(a.versions[a.versions.length - 1]!.inputs.line));
+    setForm(fromLine(a.versions[a.versions.length - 1]!.inputs.line, catalog.roleMaps));
     setFixtureId(a.fixtureId);
     setErrors([]);
   };
 
-  const supplier = supplierById(form.supplierId);
-  const roleMap = roleMapOf(form.supplierId);
-  const centers = supplier?.deliveryCenters ?? [];
+  const uploadedSupplier = state.uploads.suppliers.some((x) => x.id === form.supplierId);
+  const supplierTerms = catalog.terms.filter(
+    (t) =>
+      t.kind === "rate" &&
+      catalog.documents.find((d) => d.id === t.docId)?.supplierId === form.supplierId,
+  );
+  const verifiedRoles = new Set(
+    supplierTerms
+      .filter((t) => state.terms[t.id]?.status === "Verified")
+      .map((t) => (state.terms[t.id]?.edits?.grade as string | undefined) ?? t.grade),
+  );
+  // Uploaded suppliers list only roles with a Verified term. Others can still be typed as written.
+  const roleMap = (catalog.roleMaps[form.supplierId] ?? []).filter(
+    (r) => !uploadedSupplier || verifiedRoles.has(r.grade),
+  );
+  const centers = catalog.deliveryCenters[form.supplierId] ?? [];
+  const uploadedDocs = catalog.documents.filter(
+    (d) => d.source === "Live" && d.supplierId === form.supplierId,
+  );
   const st = result?.status;
 
   return (
@@ -237,9 +252,12 @@ function InvoiceCheckPage() {
                 update({ supplierId: e.target.value, gradeChoice: "", gradeText: "", location: "" })
               }
             >
-              {SUPPLIERS.map((s) => (
+              {catalog.suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
+                  {catalog.documents.some((d) => d.supplierId === s.id && d.source === "Live")
+                    ? " (uploaded documents)"
+                    : ""}
                 </option>
               ))}
             </select>
@@ -262,7 +280,17 @@ function InvoiceCheckPage() {
           </div>
           <Field
             label="Role or grade"
-            hint={roleMap.length ? undefined : "This supplier has no role map on file."}
+            hint={
+              uploadedSupplier
+                ? roleMap.length
+                  ? "Roles with a Verified term from the uploaded document."
+                  : "No Verified roles yet. Verify a term in the Price Book first."
+                : roleMap.length
+                  ? uploadedDocs.length
+                    ? `Includes uploaded ${uploadedDocs.map((d) => d.id).join(", ")}.`
+                    : undefined
+                  : "This supplier has no role map on file."
+            }
           >
             <select
               className={selectClass}

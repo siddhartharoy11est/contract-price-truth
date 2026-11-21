@@ -9,7 +9,14 @@ import { ROLE_MAPS } from "@/data/seed";
 import type { ContractDocument, SeedTerm, Supplier } from "@/data/types";
 import { resolveGrade } from "./pricing-engine";
 import type { ExtractionRun } from "./catalog";
-import { catalogFor, log, recompute, WorkflowError, type Actor, type WorkflowState } from "./workflow";
+import {
+  catalogFor,
+  log,
+  recompute,
+  WorkflowError,
+  type Actor,
+  type WorkflowState,
+} from "./workflow";
 
 /** Browser side limits, stricter than the server's. The server enforces its own (PRD 7.5). */
 export const UPLOAD_LIMITS = { maxPages: 25, maxChars: 80_000, maxFileBytes: 10_000_000 } as const;
@@ -106,7 +113,11 @@ export function addUploadedDocument(
     if (existing) supplierId = existing.id;
     else {
       supplierId = `u-${slug(name) || "supplier"}-${u.nextNo}`;
-      const s: Supplier = { id: supplierId, name, category: input.supplier.category?.trim() || "Uploaded supplier" };
+      const s: Supplier = {
+        id: supplierId,
+        name,
+        category: input.supplier.category?.trim() || "Uploaded supplier",
+      };
       suppliers = [...suppliers, s];
     }
   }
@@ -127,7 +138,9 @@ export function addUploadedDocument(
     uploadedBy: actor.by,
     ...(input.signingStatus === "Signed"
       ? {}
-      : { note: "Declared as not signed. Terms from this document stay Ignored and cannot be verified." }),
+      : {
+          note: "Declared as not signed. Terms from this document stay Ignored and cannot be verified.",
+        }),
   };
   const next: WorkflowState = {
     ...ws,
@@ -140,7 +153,8 @@ export function addUploadedDocument(
   };
 }
 
-const ALL_WORDS = /^(all|any|all locations?|all delivery cent(er|re)s?|all cent(er|re)s?|all sites?)$/i;
+const ALL_WORDS =
+  /^(all|any|all locations?|all delivery cent(er|re)s?|all cent(er|re)s?|all sites?)$/i;
 
 function normalizeLocation(raw: string | null, centers: string[]): string | null {
   if (!raw || !raw.trim()) return null;
@@ -158,20 +172,30 @@ const UNIT_HOUR = /^(per\s+)?(hour|hours|hourly|hr|h)$/i;
  */
 export function toLiveTerm(
   c: CheckedTerm,
-  ctx: { id: string; docId: string; runId: string; signed: boolean; roleMap: { grade: string; role: string }[] | null; centers: string[] },
+  ctx: {
+    id: string;
+    docId: string;
+    runId: string;
+    signed: boolean;
+    roleMap: { grade: string; role: string }[] | null;
+    centers: string[];
+  },
 ): SeedTerm {
   const t = c.term;
   const role = t.role?.trim() || null;
   const grade = role ? (ctx.roleMap ? resolveGrade(role, ctx.roleMap) : role) : null;
   const location = normalizeLocation(t.location, ctx.centers);
-  const ratePaise = t.amount !== null && Number.isFinite(t.amount) ? Math.round(t.amount * 100) : null;
+  const ratePaise =
+    t.amount !== null && Number.isFinite(t.amount) ? Math.round(t.amount * 100) : null;
   const currency = t.currency?.trim() || null;
   const unit = t.unit?.trim() || null;
   const iso = (d: string | null) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
   const notes: string[] = [];
-  if (role && !grade) notes.push(`Role "${role}" does not match exactly one role in this supplier's role map.`);
+  if (role && !grade)
+    notes.push(`Role "${role}" does not match exactly one role in this supplier's role map.`);
   if (!location) notes.push("Location not stated.");
-  if (currency && currency.toUpperCase() !== "INR" && currency !== "₹") notes.push(`Currency stated as ${currency}, not INR.`);
+  if (currency && currency.toUpperCase() !== "INR" && currency !== "₹")
+    notes.push(`Currency stated as ${currency}, not INR.`);
   if (unit && !UNIT_HOUR.test(unit)) notes.push(`Unit stated as ${unit}, not per hour.`);
   if (!iso(t.effective_from)) notes.push("Effective date not stated.");
   if (t.conditions) notes.push(`Conditions: ${t.conditions}`);
@@ -209,7 +233,9 @@ export function applyExtraction(
   res: ExtractResponse,
 ): { state: WorkflowState; runId: string } {
   const catalog = catalogFor(ws);
-  const doc = ws.uploads.documents.find((d) => d.id === docId) ?? fail("Only uploaded documents use live extraction.");
+  const doc =
+    ws.uploads.documents.find((d) => d.id === docId) ??
+    fail("Only uploaded documents use live extraction.");
   const u = ws.uploads;
   const runId = `RUN-${String(u.nextNo).padStart(3, "0")}`;
   if (!res.ok) {

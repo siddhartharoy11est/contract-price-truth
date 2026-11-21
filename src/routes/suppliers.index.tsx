@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Building2, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip } from "@/components/app/chips";
-import { DOCUMENTS, SUPPLIERS, TERMS } from "@/data/seed";
+import { useDemo } from "@/lib/demo-store";
 
 export const Route = createFileRoute("/suppliers/")({
   head: () => ({
@@ -25,6 +25,8 @@ export const Route = createFileRoute("/suppliers/")({
 });
 
 function SuppliersPage() {
+  const { catalog } = useDemo();
+  const { suppliers: SUPPLIERS, documents: DOCUMENTS, terms: TERMS } = catalog;
   return (
     <div>
       <PageHeader title="Suppliers">

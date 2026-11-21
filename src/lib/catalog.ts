@@ -92,7 +92,12 @@ export function catalogOf(u?: Uploads | null, states?: Edits): Catalog {
     if (grade && !(roleMaps[sid] ?? []).some((r) => r.grade === grade))
       roleMaps[sid] = [...(roleMaps[sid] ?? []), { grade, role: grade }];
     const loc = valueOf(t, states, "location");
-    if (loc && loc !== "all" && !SEED_CATALOG.deliveryCenters[sid] && !(deliveryCenters[sid] ?? []).includes(loc))
+    if (
+      loc &&
+      loc !== "all" &&
+      !SEED_CATALOG.deliveryCenters[sid] &&
+      !(deliveryCenters[sid] ?? []).includes(loc)
+    )
       deliveryCenters[sid] = [...(deliveryCenters[sid] ?? []), loc];
   }
   return { suppliers, documents, terms, roleMaps, deliveryCenters };

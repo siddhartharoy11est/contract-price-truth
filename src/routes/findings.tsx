@@ -18,7 +18,7 @@ import { LineSummary, ResultBody } from "@/components/app/result-card";
 import { RoleGate } from "@/components/app/role-gate";
 import { DiscrepancyTotals } from "@/components/app/totals";
 import { VersionHistory } from "@/components/app/version-history";
-import { ROLE_MAPS, supplierById, termById } from "@/data/seed";
+import { termById } from "@/data/seed";
 import { useDemo, useInvestigations, type InvestigationRow } from "@/lib/demo-store";
 import { DEFAULT_SUPPLIER_ID } from "@/lib/pricing-engine";
 import { formatINR } from "@/lib/money";
@@ -283,12 +283,12 @@ function InvestigationDetail({ row }: { row: InvestigationRow }) {
 
 /** What Procurement can do next, depending on the latest version. */
 function NextStep({ row }: { row: InvestigationRow }) {
-  const { supplyFact, decide } = useDemo();
+  const { supplyFact, decide, catalog } = useDemo();
   const { investigation: inv, assessment: a, latest, status } = row;
   const result = latest.result;
   const supplierId = latest.inputs.line.supplierId ?? DEFAULT_SUPPLIER_ID;
-  const centers = supplierById(supplierId)?.deliveryCenters ?? [];
-  const roles = ROLE_MAPS[supplierId] ?? [];
+  const centers = catalog.deliveryCenters[supplierId] ?? [];
+  const roles = catalog.roleMaps[supplierId] ?? [];
   const [value, setValue] = useState("");
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");

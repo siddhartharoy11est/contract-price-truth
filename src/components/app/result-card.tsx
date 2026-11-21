@@ -1,6 +1,6 @@
+import { useDemo } from "@/lib/demo-store";
 import type { ReactNode } from "react";
 import { AlertTriangle, Info } from "lucide-react";
-import { supplierById } from "@/data/seed";
 import type { InvoiceLine, Location } from "@/data/types";
 import { formatINR } from "@/lib/money";
 import { formatDate, formatPeriod } from "@/lib/dates";
@@ -142,7 +142,8 @@ export function ResultBody({
   const hasAmounts =
     result.expectedPaise !== null && result.billedPaise !== null && result.differencePaise !== null;
   const diff = result.differencePaise ?? 0;
-  const centers = supplierById(line?.supplierId ?? "brighthire")?.deliveryCenters ?? [];
+  const { catalog } = useDemo();
+  const centers = catalog.deliveryCenters[line?.supplierId ?? "brighthire"] ?? [];
   const blockers = result.blockers ?? [];
   return (
     <div className="space-y-4">

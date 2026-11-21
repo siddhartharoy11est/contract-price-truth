@@ -10,7 +10,14 @@ import type { ExtractResponse } from "./extraction/guard";
 export function mockResponse(terms: ExtractedTerm[], pages: string[]): ExtractResponse {
   const checked = terms.map((t) => checkTerm(t, pages));
   const accepted = checked.filter((c) => c.accepted).length;
-  return { ok: true, pages: pages.length, chunks: 1, terms: checked, accepted, rejected: checked.length - accepted };
+  return {
+    ok: true,
+    pages: pages.length,
+    chunks: 1,
+    terms: checked,
+    accepted,
+    rejected: checked.length - accepted,
+  };
 }
 
 export const ORBIS_PAGES = [
@@ -94,7 +101,8 @@ export const amendment3Terms = (): ExtractedTerm[] => [
     currency: "INR",
     effective_from: "2026-11-01",
     effective_to: null,
-    conditions: "This amendment applies only to services delivered at the Hyderabad Delivery Center.",
+    conditions:
+      "This amendment applies only to services delivered at the Hyderabad Delivery Center.",
     page: 1,
     clause_reference: "1",
     quote: "is revised to INR 500 per hour with effect from 1 November 2026.",

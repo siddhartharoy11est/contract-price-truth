@@ -18,14 +18,14 @@ import { Chip, SourceLabel, TermStatusChip } from "@/components/app/chips";
 import { QuoteHighlight, TermCitation } from "@/components/app/citation";
 import { ConflictCard } from "@/components/app/conflict-card";
 import { RoleGate } from "@/components/app/role-gate";
-import { CONFLICTS, docById, ROLE_MAPS, supplierById, TERMS, termById } from "@/data/seed";
+import { CONFLICTS } from "@/data/seed";
 import type { SeedTerm } from "@/data/types";
 import { useDemo } from "@/lib/demo-store";
 import { formatINR, parseRupees } from "@/lib/money";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { aiOriginal, currentValue, type EditableField, type FieldValue } from "@/lib/term-state";
-import { canVerify, isUnsigned } from "@/lib/workflow";
+import { canVerify, isUnsigned as isUnsignedIn } from "@/lib/workflow";
 import { quoteInDocument, valueSupported } from "@/lib/evidence";
 
 type PriceBookTab = "rates" | "clauses" | "pending";
@@ -58,11 +58,32 @@ export const Route = createFileRoute("/price-book")({
   component: PriceBookPage,
 });
 
-const locLabel = (t: SeedTerm) =>
-  t.location === "all" ? "All centers" : t.location ? `${t.location} only` : "Not applicable";
+const locLabel = (t: SeedTerm, loc: string | null = t.location) =>
+  loc === "all"
+    ? "All centers"
+    : loc
+      ? `${loc} only`
+      : t.source === "Live"
+        ? "Not stated"
+        : "Not applicable";
 const selectClass = "h-9 rounded-md border border-input bg-card px-2.5 text-xs";
 
+/** Seed plus uploaded terms, documents and role maps, from the demo store. */
+function useCatalog() {
+  const { catalog, state } = useDemo();
+  return {
+    TERMS: catalog.terms,
+    termById: (id: string) => catalog.terms.find((t) => t.id === id),
+    docById: (id: string) => catalog.documents.find((d) => d.id === id),
+    centersOf: (supplierId: string) => catalog.deliveryCenters[supplierId] ?? [],
+    ROLE_MAPS: catalog.roleMaps,
+    documents: catalog.documents,
+    isUnsigned: (id: string) => isUnsignedIn(id, state.uploads),
+  };
+}
+
 function PriceBookPage() {
+  const { TERMS, termById } = useCatalog();
   const { state } = useDemo();
   const hash = useLocation({ select: (l) => l.hash });
   const { tab = "rates" } = Route.useSearch();
@@ -75,7 +96,7 @@ function PriceBookPage() {
 
   useEffect(() => {
     if (hash && termById(hash)) setSelected(hash);
-  }, [hash]);
+  }, [hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -102,7 +123,7 @@ function PriceBookPage() {
           (location === "all-centers" && t.location === "all"))
       );
     });
-  }, [tab, query, status, grade, location, state.terms]);
+  }, [TERMS, tab, query, status, grade, location, state.terms]);
 
   const pendingCount = TERMS.filter((t) => {
     const ts = state.terms[t.id]!;
@@ -124,9 +145,9 @@ function PriceBookPage() {
 
   return (
     <div>
-      <PageHeader title="Price Book" actions={<SourceLabel live={false} />}>
-        Verified, effective-dated commercial terms for BrightHire Staffing. Only Verified terms can
-        drive an invoice result.
+      <PageHeader title="Price Book">
+        Verified, effective-dated commercial terms. Seed terms come from a Stored extraction and
+        uploaded terms from a Live extraction. Only Verified terms can drive an invoice result.
       </PageHeader>
       <div
         className="mb-4 flex flex-wrap items-center gap-1 border-b"
@@ -204,7 +225,7 @@ function PriceBookPage() {
               aria-label="Filter by grade"
             >
               <option value="all">All grades</option>
-              {["L4", "L3", "L2"].map((g) => (
+              {[...new Set(TERMS.map((t) => t.grade).filter((g): g is string => !!g))].map((g) => (
                 <option key={g}>{g}</option>
               ))}
             </select>
@@ -216,7 +237,11 @@ function PriceBookPage() {
             >
               <option value="all">All locations</option>
               <option value="all-centers">All centers</option>
-              {["Bengaluru", "Pune", "Hyderabad"].map((l) => (
+              {[
+                ...new Set(
+                  TERMS.map((t) => t.location).filter((l): l is string => !!l && l !== "all"),
+                ),
+              ].map((l) => (
                 <option key={l}>{l}</option>
               ))}
             </select>
@@ -280,6 +305,7 @@ function RateTable({
   onSelect: (id: string) => void;
   pending: boolean;
 }) {
+  const { isUnsigned } = useCatalog();
   const { state } = useDemo();
   return (
     <div className="overflow-x-auto">
@@ -318,6 +344,7 @@ function RateTable({
                   </button>
                   <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
                     {t.id}
+                    {t.source === "Live" ? " · Live (uploaded)" : " · Stored (seed)"}
                     {link
                       ? ` · Overrides ${link.target}${t.location !== "all" ? ` for ${t.location}` : ""}${link.confirmed ? ", link confirmed" : ", link not confirmed"}`
                       : ""}
@@ -328,8 +355,13 @@ function RateTable({
                     </span>
                   )}
                 </td>
-                <td className="table-cell text-xs">{t.grade ?? "Any"}</td>
-                <td className="table-cell text-xs">{locLabel(t)}</td>
+                <td className="table-cell text-xs">
+                  {(currentValue(t, ts, "grade") as string | null) ??
+                    (t.source === "Live" ? "Unknown" : "Any")}
+                </td>
+                <td className="table-cell text-xs">
+                  {locLabel(t, currentValue(t, ts, "location") as string | null)}
+                </td>
                 <td className="table-cell whitespace-nowrap">
                   <span className="tabular font-mono text-xs font-medium">
                     {rate !== null ? `${formatINR(rate)}/h` : "Not a rate"}
@@ -462,6 +494,7 @@ function showValue(field: EditableField, v: FieldValue): string {
 }
 
 function PanelHeader({ t }: { t: SeedTerm }) {
+  const { docById, isUnsigned } = useCatalog();
   const { state } = useDemo();
   const ts = state.terms[t.id]!;
   const doc = docById(t.docId)!;
@@ -471,7 +504,7 @@ function PanelHeader({ t }: { t: SeedTerm }) {
         <span className="font-mono text-xs text-muted-foreground">{t.id}</span>
         <TermStatusChip status={isUnsigned(t.id) ? "Ignored" : ts.status} />
         {ts.secondReadDiffers && <Chip tone="danger">Second read differs</Chip>}
-        <SourceLabel live={false} />
+        <SourceLabel live={t.source === "Live"} />
       </div>
       <SheetTitle className="text-xl font-semibold tracking-tight">{t.title}</SheetTitle>
       <SheetDescription className="text-xs">
@@ -482,6 +515,7 @@ function PanelHeader({ t }: { t: SeedTerm }) {
 }
 
 function QuoteInContext({ t }: { t: SeedTerm }) {
+  const { docById } = useCatalog();
   const doc = docById(t.docId)!;
   return (
     <section className="paper-sheet p-4">
@@ -530,6 +564,7 @@ function History({ t }: { t: SeedTerm }) {
 }
 
 function ReviewPanel({ termId, onDone }: { termId: string; onDone: () => void }) {
+  const { termById } = useCatalog();
   const t = termById(termId)!;
   return t.kind === "clause" || t.kind === "notice" ? (
     <ClauseReviewPanel t={t} onDone={onDone} />
@@ -539,9 +574,10 @@ function ReviewPanel({ termId, onDone }: { termId: string; onDone: () => void })
 }
 
 function CorrectionForm({ t }: { t: SeedTerm }) {
+  const { docById, centersOf, ROLE_MAPS, documents } = useCatalog();
   const { state, correctField } = useDemo();
   const ts = state.terms[t.id]!;
-  const centers = supplierById(docById(t.docId)!.supplierId)?.deliveryCenters ?? [];
+  const centers = centersOf(docById(t.docId)!.supplierId);
   const roleMap = ROLE_MAPS[docById(t.docId)!.supplierId] ?? [];
   const [field, setField] = useState<EditableField>("ratePaise");
   const [text, setText] = useState("");
@@ -562,9 +598,10 @@ function CorrectionForm({ t }: { t: SeedTerm }) {
       ? valueSupported(field, parsed, [t.quote, quote], {
           supplierId: docById(t.docId)!.supplierId,
           allLocationsConfirmed: allConfirmed,
+          roleMaps: ROLE_MAPS,
         })
       : false;
-  const quoteOk = quoteInDocument(t.docId, quote);
+  const quoteOk = quoteInDocument(t.docId, quote, documents);
 
   const input =
     field === "grade" ? (
@@ -705,11 +742,18 @@ function CorrectionForm({ t }: { t: SeedTerm }) {
 }
 
 function OverrideSelector({ t, reason }: { t: SeedTerm; reason: string }) {
+  const { TERMS, isUnsigned, docById } = useCatalog();
   const { state, setOverride, confirmOverride } = useDemo();
   const ts = state.terms[t.id]!;
   const link = ts.override ?? null;
+  const supplierOf = (id: string) => docById(id)?.supplierId;
   const candidates = TERMS.filter(
-    (x) => x.id !== t.id && x.kind === "rate" && x.grade === t.grade && !isUnsigned(x.id),
+    (x) =>
+      x.id !== t.id &&
+      x.kind === "rate" &&
+      x.grade === t.grade &&
+      supplierOf(x.docId) === supplierOf(t.docId) &&
+      !isUnsigned(x.id),
   );
   const scope = `${t.grade ?? ""}${t.location === "all" ? ", all centers" : t.location ? `, ${t.location}` : ""}${
     t.effectiveFrom ? `, from ${formatDate(t.effectiveFrom)}` : ""
@@ -767,6 +811,7 @@ function OverrideSelector({ t, reason }: { t: SeedTerm; reason: string }) {
 }
 
 function RateReviewPanel({ t, onDone }: { t: SeedTerm; onDone: () => void }) {
+  const { isUnsigned } = useCatalog();
   const { state, verifyTerm, markNeedsReview } = useDemo();
   const ts = state.terms[t.id]!;
   const unsigned = isUnsigned(t.id);
@@ -931,6 +976,7 @@ function RateReviewPanel({ t, onDone }: { t: SeedTerm; onDone: () => void }) {
 }
 
 function ClauseReviewPanel({ t, onDone }: { t: SeedTerm; onDone: () => void }) {
+  const { isUnsigned } = useCatalog();
   const { state, reviewClause, markNeedsReview } = useDemo();
   const ts = state.terms[t.id]!;
   const conflict = t.conflictId ? CONFLICTS.find((c) => c.id === t.conflictId) : undefined;

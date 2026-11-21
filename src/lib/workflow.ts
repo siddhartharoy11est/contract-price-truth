@@ -732,8 +732,15 @@ export function setOverride(
   const t = termOf(ws, termId);
   if (target) {
     const other = termOf(ws, target);
-    if (other.id === termId || other.kind !== "rate" || other.grade !== t.grade)
-      fail("An override must point to another rate term for the same role.");
+    const docs = catalogFor(ws).documents;
+    const supplierOf = (docId: string) => docs.find((d) => d.id === docId)?.supplierId;
+    if (
+      other.id === termId ||
+      other.kind !== "rate" ||
+      other.grade !== t.grade ||
+      supplierOf(other.docId) !== supplierOf(t.docId)
+    )
+      fail("An override must point to another rate term for the same supplier and role.");
   }
   const s = ws.terms[termId]!;
   if ((s.override?.target ?? null) === target) return ws;

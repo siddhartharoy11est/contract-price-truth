@@ -135,7 +135,7 @@ function AboutPage() {
             <div className="rounded-md border bg-muted/30 p-3">
               <p className="font-medium">AI reads and proposes</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Terms are labelled Stored extraction or Live result.
+                Terms are labelled Stored (seed) or Live (uploaded).
               </p>
             </div>
             <div className="rounded-md border bg-muted/30 p-3">

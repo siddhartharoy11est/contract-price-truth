@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft, Building2, FileText } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Chip, DocStatusBadge, TermStatusChip } from "@/components/app/chips";
-import { DOCUMENTS, SUPPLIERS, TERMS, supplierById } from "@/data/seed";
+import { supplierById } from "@/data/seed";
 import { useDemo } from "@/lib/demo-store";
 import { formatDate } from "@/lib/dates";
 import { formatINR } from "@/lib/money";
@@ -11,8 +11,9 @@ import { currentValue } from "@/lib/term-state";
 export const Route = createFileRoute("/suppliers/$supplierId")({
   loader: ({ params }) => {
     const supplier = supplierById(params.supplierId);
-    if (!supplier) throw notFound();
-    return { supplierId: supplier.id, name: supplier.name };
+    // Uploaded suppliers live only in this browser, so the server cannot know their names.
+    if (!supplier && !params.supplierId.startsWith("u-")) throw notFound();
+    return { supplierId: params.supplierId, name: supplier?.name ?? "Uploaded supplier" };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -44,10 +45,26 @@ export const Route = createFileRoute("/suppliers/$supplierId")({
 
 function SupplierWorkspace() {
   const { supplierId } = Route.useLoaderData();
-  const supplier = SUPPLIERS.find((s) => s.id === supplierId)!;
-  const documents = DOCUMENTS.filter((d) => d.supplierId === supplierId);
-  const terms = TERMS.filter((t) => documents.some((d) => d.id === t.docId));
-  const { state } = useDemo();
+  const { state, catalog, hydrated } = useDemo();
+  const supplier = catalog.suppliers.find((s) => s.id === supplierId);
+  const documents = catalog.documents.filter((d) => d.supplierId === supplierId);
+  const terms = catalog.terms.filter((t) => documents.some((d) => d.id === t.docId));
+  if (!supplier)
+    return (
+      <div className="py-16 text-center">
+        <p className="text-xl font-semibold">
+          {hydrated ? "Supplier not found" : "Loading supplier"}
+        </p>
+        {hydrated && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Uploaded suppliers are kept only in the browser that created them.
+          </p>
+        )}
+        <Link to="/suppliers" className="mt-3 inline-block text-sm text-primary hover:underline">
+          Back to Suppliers
+        </Link>
+      </div>
+    );
   return (
     <div>
       <Link

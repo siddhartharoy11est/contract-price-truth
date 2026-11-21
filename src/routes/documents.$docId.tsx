@@ -1,10 +1,10 @@
 import { createFileRoute, Link, notFound, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, Info } from "lucide-react";
+import { ArrowLeft, Info, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { DocStatusBadge, SourceLabel, TermStatusChip, Chip } from "@/components/app/chips";
 import { QuoteHighlight, clauseAnchor } from "@/components/app/citation";
-import { LiveReadPanel } from "@/components/app/live-read-panel";
-import { docById, supplierById, TERMS } from "@/data/seed";
+import { ExtractionPanel } from "@/components/app/extraction-panel";
+import { docById } from "@/data/seed";
 import { useDemo } from "@/lib/demo-store";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
@@ -14,8 +14,9 @@ import { currentValue } from "@/lib/term-state";
 export const Route = createFileRoute("/documents/$docId")({
   loader: ({ params }) => {
     const doc = docById(params.docId);
-    if (!doc) throw notFound();
-    return { docId: doc.id, title: doc.title };
+    // Uploaded documents live only in this browser, so the server cannot know their titles.
+    if (!doc && !/^UP-\d+$/.test(params.docId)) throw notFound();
+    return { docId: params.docId, title: doc?.title ?? "Uploaded document" };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -55,11 +56,30 @@ export const Route = createFileRoute("/documents/$docId")({
 
 function DocumentPage() {
   const { docId } = Route.useLoaderData();
-  const doc = docById(docId)!;
-  const supplier = supplierById(doc.supplierId);
-  const { state } = useDemo();
+  const { state, catalog, hydrated } = useDemo();
   const hash = useLocation({ select: (l) => l.hash });
-  const terms = TERMS.filter((t) => t.docId === doc.id);
+  const doc = catalog.documents.find((d) => d.id === docId);
+  if (!doc) {
+    return hydrated ? (
+      <div className="py-16 text-center">
+        <p className="text-xl font-semibold">Document not found</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Uploaded documents are kept only in the browser that uploaded them, and Reset demo removes
+          them.
+        </p>
+        <Link to="/documents" className="mt-3 inline-block text-sm text-primary hover:underline">
+          Back to All Contracts
+        </Link>
+      </div>
+    ) : (
+      <p className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" /> Loading document
+      </p>
+    );
+  }
+  const live = doc.source === "Live";
+  const supplier = catalog.suppliers.find((x) => x.id === doc.supplierId);
+  const terms = catalog.terms.filter((t) => t.docId === doc.id);
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -94,9 +114,13 @@ function DocumentPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.85fr)]">
         <article className="paper-sheet h-fit overflow-hidden">
           <div className="border-b px-5 py-3">
-            <h2 className="text-sm font-semibold">Stored document text</h2>
+            <h2 className="text-sm font-semibold">
+              {live ? "Page text read from the uploaded PDF" : "Stored document text"}
+            </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Text record only. No rendered PDF is represented.
+              {live
+                ? `Text read in this browser from ${doc.fileName ?? "the PDF"}, one block per page. The PDF itself is not kept.`
+                : "Text record only. No rendered PDF is represented."}
             </p>
           </div>
           <ol className="space-y-5 p-5 sm:p-6">
@@ -113,11 +137,22 @@ function DocumentPage() {
                   )}
                 >
                   <p className="font-mono text-[11px] font-medium text-muted-foreground">
-                    {doc.kind === "Supplier letter" ? "Letter text" : `Clause ${c.label}`}
+                    {doc.kind === "Supplier letter"
+                      ? "Letter text"
+                      : live
+                        ? c.label
+                        : `Clause ${c.label}`}
                   </p>
-                  <p className="mt-1.5 text-sm leading-7">
-                    <QuoteHighlight text={c.text} quote={quote} />
-                  </p>
+                  {live ? (
+                    <PageText
+                      text={c.text}
+                      quotes={terms.filter((t) => t.clauseId === c.id).map((t) => t.quote)}
+                    />
+                  ) : (
+                    <p className="mt-1.5 text-sm leading-7">
+                      <QuoteHighlight text={c.text} quote={quote} />
+                    </p>
+                  )}
                 </li>
               );
             })}
@@ -127,11 +162,13 @@ function DocumentPage() {
           <section className="surface overflow-hidden">
             <div className="flex items-center justify-between border-b px-4 py-3">
               <h2 className="text-sm font-semibold">Extracted terms</h2>
-              <SourceLabel live={false} />
+              <SourceLabel live={live} />
             </div>
             {terms.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">
-                No terms were extracted from this document.
+                {live
+                  ? "No terms yet. Run Extract Prices to propose rate terms from this document."
+                  : "No terms were extracted from this document."}
               </p>
             ) : (
               <div className="divide-y">
@@ -159,6 +196,12 @@ function DocumentPage() {
                           from {t.effectiveFrom ? formatDate(t.effectiveFrom) : "unknown"}
                         </p>
                       )}
+                      {live && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          {t.grade ?? "Role unknown"} · Page {t.clauseId.replace(/^p/, "")}
+                          {t.ratePaise === null && " · Amount unknown"}
+                        </p>
+                      )}
                       {ts?.secondReadDiffers && (
                         <Chip tone="danger" className="mt-2">
                           Second read differs
@@ -171,9 +214,18 @@ function DocumentPage() {
               </div>
             )}
           </section>
-          {doc.supplierId === "brighthire" && <LiveReadPanel docId={doc.id} />}
+          <ExtractionPanel doc={doc} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Page text with every cited quote highlighted, whitespace kept as read from the PDF. */
+function PageText({ text, quotes }: { text: string; quotes: string[] }) {
+  return (
+    <div className="mt-1.5 whitespace-pre-wrap text-sm leading-7">
+      <QuoteHighlight text={text} quote={quotes[0]} extra={quotes.slice(1)} />
     </div>
   );
 }
