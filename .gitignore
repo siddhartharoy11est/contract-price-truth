@@ -35,3 +35,6 @@ dist-ssr
 contracts/
 spike-samples/
 *.pdf
+# The two synthetic samples served to visitors. No other PDF may be added here.
+!public/samples/Orbis_Order_Form_SAMPLE.pdf
+!public/samples/BrightHire_Amendment_3_SAMPLE.pdf
