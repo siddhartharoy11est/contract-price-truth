@@ -399,7 +399,7 @@ function ProcurementDashboard() {
         />
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
-        <section className="surface h-fit overflow-hidden">
+        <section className="surface h-fit overflow-hidden" data-tour="action-required">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold">Action Required</h2>

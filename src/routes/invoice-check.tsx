@@ -412,7 +412,7 @@ function InvoiceCheckPage() {
               </p>
             </div>
           ) : (
-            <>
+            <div className="space-y-6" data-tour="invoice-result">
               <ResultCard
                 result={result}
                 line={latest.inputs.line}
@@ -427,7 +427,7 @@ function InvoiceCheckPage() {
                   supplyFact(assessment.id, { kind: "location", value: loc })
                 }
                 actions={
-                  <div className="space-y-3">
+                  <div className="space-y-3" data-tour="request-review">
                     {investigation ? (
                       <HandoffConfirmation
                         id={investigation.investigation.id}
@@ -481,7 +481,7 @@ function InvoiceCheckPage() {
                 }
               />
               <VersionHistory assessment={assessment} />
-            </>
+            </div>
           )}
           <SavedChecks openId={openId} onOpen={openSaved} />
         </div>

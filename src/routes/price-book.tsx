@@ -336,6 +336,7 @@ function RateTable({
             return (
               <tr
                 key={t.id}
+                data-tour={`term-${t.id}`}
                 onClick={() => onSelect(t.id)}
                 className="cursor-pointer hover:bg-muted/40"
               >
@@ -423,6 +424,7 @@ function ClauseTable({ terms, onSelect }: { terms: SeedTerm[]; onSelect: (id: st
             return (
               <tr
                 key={t.id}
+                data-tour={`term-${t.id}`}
                 onClick={() => onSelect(t.id)}
                 className="cursor-pointer hover:bg-muted/40"
               >

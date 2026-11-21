@@ -34,6 +34,20 @@ const wait = (ms: number) =>
 /** Lets React commit and the browser paint the page the tour just opened. */
 const settle = () => new Promise<void>((resolve) => window.setTimeout(resolve, 60));
 
+const HIGHLIGHT_MS = 3_000;
+
+/** Scrolls the element a step talks about into view and rings it softly. Missing: nothing. */
+function highlight(name: string | undefined) {
+  if (!name) return;
+  const el = document.querySelector<HTMLElement>(`[data-tour="${name}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  el.classList.remove("tour-highlight");
+  void el.offsetWidth;
+  el.classList.add("tour-highlight");
+  window.setTimeout(() => el.classList.remove("tour-highlight"), HIGHLIGHT_MS);
+}
+
 /**
  * The guided tour: a floating launcher and a compact docked panel. Next, Back and All steps
  * switch the demo account, open the page and play the step's real workflow action.
@@ -96,7 +110,9 @@ export function TourProvider({ children }: { children: ReactNode }) {
           await wait(AFTER_MS);
           if (!alive()) return;
         }
-        if (alive()) setResult(last);
+        if (!alive()) return;
+        setResult(last);
+        highlight(s.highlight);
       } catch {
         // Navigation interrupted. The step still shows.
       } finally {

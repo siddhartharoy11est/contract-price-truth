@@ -244,3 +244,24 @@
     box-shadow: 0 0 0 6px color-mix(in oklch, var(--warning) 35%, transparent);
   }
 }
+
+/* Guided tour highlight: a soft rounded ring that fades out. No overlay, clicks pass through. */
+.tour-highlight {
+  outline: 2px solid var(--warning);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tour-highlight {
+    animation: tour-highlight 3s ease-out forwards;
+  }
+}
+@keyframes tour-highlight {
+  0%,
+  60% {
+    outline-color: var(--warning);
+  }
+  100% {
+    outline-color: transparent;
+  }
+}

@@ -262,7 +262,9 @@ function InvestigationDetail({ row }: { row: InvestigationRow }) {
             </ul>
           )}
         </section>
-        <VersionHistory assessment={a} />
+        <div data-tour="investigation-versions">
+          <VersionHistory assessment={a} />
+        </div>
         <section>
           <h3 className="eyebrow mb-2">Timeline</h3>
           <ol className="space-y-3 border-l pl-4">

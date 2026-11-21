@@ -231,7 +231,7 @@ function ConflictReviewPage() {
             </p>
           ) : (
             <RoleGate role="legal" action="Recording a ruling">
-              <section className="space-y-4 rounded-md border p-4">
+              <section className="space-y-4 rounded-md border p-4" data-tour="legal-readings">
                 <div>
                   <h3 className="text-sm font-semibold">Record ruling</h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">
