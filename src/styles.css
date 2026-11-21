@@ -228,3 +228,19 @@
 @utility flash-target {
   animation: flash-in 1.6s ease-out;
 }
+
+/* Guided tour: a soft ring that fades in and out over about two seconds. Never a fast flash. */
+@media (prefers-reduced-motion: no-preference) {
+  .tour-pulse {
+    animation: tour-pulse 2s ease-in-out infinite;
+  }
+}
+@keyframes tour-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warning) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, var(--warning) 35%, transparent);
+  }
+}

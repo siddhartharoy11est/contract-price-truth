@@ -761,7 +761,12 @@ export function setOverride(
 }
 
 /** Explicitly confirms the override link, recording who and when (M5.3). */
-export function confirmOverride(ws: WorkflowState, actor: Actor, termId: string): WorkflowState {
+export function confirmOverride(
+  ws: WorkflowState,
+  actor: Actor,
+  termId: string,
+  reason?: string,
+): WorkflowState {
   const s = ws.terms[termId]!;
   if (!s.override) fail("This term has no override link to confirm.");
   if (s.override!.confirmed) return ws;
@@ -770,7 +775,7 @@ export function confirmOverride(ws: WorkflowState, actor: Actor, termId: string)
     override: { target: x.override!.target, confirmed: true, by: actor.by, at: actor.at },
     history: [
       ...x.history,
-      historyEntry(actor, `Override link to ${x.override!.target} confirmed`),
+      historyEntry(actor, `Override link to ${x.override!.target} confirmed`, reason),
     ],
   }));
   return afterTermChange(next, actor, termId, `${termId} override link confirmed`);

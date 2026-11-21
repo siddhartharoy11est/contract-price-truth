@@ -1,174 +1,422 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, Check, Compass, List, Moon, X } from "lucide-react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
-import type { RoleId } from "@/data/types";
-import { useDemo, useInvestigations } from "@/lib/demo-store";
+import { roleById } from "@/data/roles";
+import { useDemo } from "@/lib/demo-store";
+import { toggleTheme } from "@/lib/theme";
+import {
+  BADGE_LABEL,
+  PERSONA_CHIP,
+  TOUR_STEPS,
+  readTour,
+  writeTour,
+  type TourBadge,
+  type TourLink,
+} from "@/lib/tour";
 import { cn } from "@/lib/utils";
-import { DISPUTE_HINT, DISPUTE_START } from "@/lib/demo-hints";
 
-type Path = "/price-book" | "/invoice-check" | "/findings" | "/legal";
+/** How long the soft pulse runs after load or after opening, in milliseconds. */
+const PULSE_MS = 10_000;
 
-export function GuidedDemo() {
-  const { state, setRole, setGuideDismissed } = useDemo();
-  const rows = useInvestigations();
-  const navigate = useNavigate();
-  const f = (fx: string) => rows.filter((x) => x.assessment.fixtureId === fx);
-  const checked = (fx: string) => state.assessments.some((a) => a.fixtureId === fx);
+interface TourCtx {
+  open: boolean;
+  step: number;
+  /** Opens the tour at its first step. */
+  openTour: () => void;
+}
 
-  const steps: {
-    text: string;
-    hint?: string;
-    done: boolean;
-    role: RoleId;
-    to: Path;
-    clauses?: boolean;
-    hash?: string;
-  }[] = [
-    {
-      text: "Procurement: in the Price Book, verify T02 and T04 and confirm their override links.",
-      done: ["T02", "T04"].every(
-        (id) => state.terms[id]?.status === "Verified" && state.terms[id]?.override?.confirmed,
-      ),
-      role: "procurement",
-      to: "/price-book",
-    },
-    {
-      text: "Finance: load example S01 in Invoice Check and see the ₹15,000 potential excess.",
-      hint: state.progress.s01Awaiting
-        ? 'You saw "Awaiting verification" before T02 was verified.'
-        : 'Try it before step 1 to see "Awaiting verification".',
-      done: Boolean(state.progress.s01Excess),
-      role: "finance",
-      to: "/invoice-check",
-    },
-    {
-      text: "Finance: raise an investigation.",
-      done: f("S01").length > 0,
-      role: "finance",
-      to: "/invoice-check",
-    },
-    {
-      text: "Procurement: confirm or dismiss it with a reason.",
-      done: f("S01").some((x) => x.investigation.decisions.length > 0),
-      role: "procurement",
-      to: "/findings",
-    },
-    {
-      text: 'Finance: check S07, see "Needs information" and Request review. Procurement supplies the delivery center and the same check gets a new version.',
-      done: f("S07").some((x) => x.assessment.facts.length > 0),
-      role: f("S07").length ? "procurement" : "finance",
-      to: f("S07").length ? "/findings" : "/invoice-check",
-    },
-    {
-      text: `Finance: check S09 and Request review. Procurement opens ${DISPUTE_START["C1"]!.label}, marks it Disputed and sends the question to Legal.`,
-      hint: DISPUTE_HINT,
-      done: checked("S09") && state.conflictCases["C1"]?.status !== "Open",
-      role: checked("S09") ? "procurement" : "finance",
-      to: checked("S09") ? "/price-book" : "/invoice-check",
-      ...(checked("S09") ? { clauses: true, hash: DISPUTE_START["C1"]!.termId } : {}),
-    },
-    {
-      text: "Legal: record a ruling and watch the check get a new version.",
-      done: Boolean(state.rulings["C1"]),
-      role: "legal",
-      to: "/legal",
-    },
-  ];
-  const doneCount = steps.filter((s) => s.done).length;
-  const nextIndex = steps.findIndex((s) => !s.done);
+const TourContext = createContext<TourCtx | null>(null);
 
-  if (state.guideDismissed) {
-    return (
-      <button
-        onClick={() => setGuideDismissed(false)}
-        className="text-sm text-primary underline underline-offset-2"
-      >
-        Show the "Try this path" checklist
-      </button>
-    );
-  }
+function usePulse(active: boolean, key: unknown): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (!active) return setOn(false);
+    setOn(true);
+    const t = window.setTimeout(() => setOn(false), PULSE_MS);
+    return () => window.clearTimeout(t);
+  }, [active, key]);
+  return on;
+}
+
+/**
+ * The guided tour. One story across the three personas, eleven steps. It replaces the earlier
+ * "Try this path" checklist and drives the same store actions and account switch.
+ */
+export function TourProvider({ children }: { children: ReactNode }) {
+  const { hydrated, state } = useDemo();
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0);
+  const [opened, setOpened] = useState(0);
+  const autoChecked = useRef(false);
+
+  useEffect(() => {
+    if (!hydrated || !state.accountSelected || autoChecked.current) return;
+    autoChecked.current = true;
+    if (readTour() === null) {
+      setStep(0);
+      setOpen(true);
+      setOpened((n) => n + 1);
+    }
+  }, [hydrated, state.accountSelected]);
+
+  const openTour = useCallback(() => {
+    setStep(0);
+    setOpen(true);
+    setOpened((n) => n + 1);
+  }, []);
 
   return (
-    <section className="surface p-4 sm:p-5">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow">
-            Guided demo · {doneCount} of {steps.length} done
-          </p>
-          <h2 className="font-display text-xl">Try this path</h2>
+    <TourContext.Provider value={{ open, step, openTour }}>
+      {children}
+      {open && (
+        <TourPanel step={step} setStep={setStep} opened={opened} close={() => setOpen(false)} />
+      )}
+    </TourContext.Provider>
+  );
+}
+
+function useTour(): TourCtx {
+  const t = useContext(TourContext);
+  if (!t) throw new Error("useTour must be used inside TourProvider");
+  return t;
+}
+
+/** Header button. Visible on every page, reopens the tour at its first step. */
+export function TourButton() {
+  const { openTour } = useTour();
+  const pulse = usePulse(true, 0);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn(
+        "h-9 shrink-0 gap-1.5 border-warning px-2.5 text-xs text-warning hover:bg-warning-soft hover:text-warning",
+        pulse && "tour-pulse",
+      )}
+      onClick={openTour}
+      aria-label="Open the guided tour"
+    >
+      <Compass className="size-3.5" />
+      <span className="hidden sm:inline">Tour</span>
+    </Button>
+  );
+}
+
+function Badge({ kind }: { kind: TourBadge }) {
+  return (
+    <span
+      className={cn(
+        "rounded border px-1.5 py-0.5 text-[10px] font-medium",
+        kind === "ai" && "border-info/30 bg-info-soft text-info",
+        kind === "rules" && "border-success/30 bg-success-soft text-success",
+        kind === "people" && "border-legal/30 bg-legal-soft text-legal",
+      )}
+    >
+      {BADGE_LABEL[kind]}
+    </span>
+  );
+}
+
+function TourPanel({
+  step,
+  setStep,
+  opened,
+  close,
+}: {
+  step: number;
+  setStep: (n: number) => void;
+  opened: number;
+  close: () => void;
+}) {
+  const { state, reset, selectAccount, setRole, tourAction } = useDemo();
+  const navigate = useNavigate();
+  const [showAll, setShowAll] = useState(false);
+  const [resetNotice, setResetNotice] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const pulse = usePulse(true, opened);
+  const s = TOUR_STEPS[step]!;
+  const last = step === TOUR_STEPS.length - 1;
+  const titleId = "tour-title";
+
+  const dismiss = useCallback(
+    (memory: "skipped" | "completed") => {
+      writeTour(memory);
+      close();
+    },
+    [close],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dismiss("skipped");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dismiss]);
+
+  const goTo = (n: number) => {
+    setStep(n);
+    setDone(null);
+    setShowAll(false);
+  };
+
+  const follow = (link: TourLink, role = link.role) => {
+    if (role && state.role !== role) setRole(role);
+    void navigate({
+      to: link.to,
+      ...(link.search ? { search: link.search } : {}),
+      ...(link.hash ? { hash: link.hash } : {}),
+    } as unknown as Parameters<typeof navigate>[0]);
+  };
+
+  const start = () => {
+    reset();
+    selectAccount("procurement");
+    writeTour("started");
+    setResetNotice(true);
+    goTo(1);
+    void navigate({ to: "/" });
+  };
+
+  const actionDone =
+    s.doForMe === "verify-T02"
+      ? state.terms["T02"]?.status === "Verified" && state.terms["T02"]?.override?.confirmed
+      : s.doForMe === "dispute-T06"
+        ? state.terms["T06"]?.interpretation?.choice === "Disputed"
+        : false;
+
+  const doForMe = () => {
+    if (!s.doForMe || !s.persona) return;
+    if (tourAction(s.doForMe, s.persona)) {
+      setDone(
+        s.doForMe === "verify-T02"
+          ? "Done: T02 is Verified and its override link is confirmed, recorded as Priya Nair."
+          : "Done: T06 is Disputed and the question is with Legal, recorded as Priya Nair.",
+      );
+      if (s.go) follow(s.go, s.persona);
+    }
+  };
+
+  const persona = s.persona ? roleById(s.persona) : null;
+  const needsSwitch = persona && state.role !== persona.id;
+  const mainClass = cn("bg-warning text-background hover:bg-warning/90", pulse && "tour-pulse");
+
+  return (
+    <section
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[65vh] flex-col rounded-t-xl border-t-4 border-warning bg-card shadow-2xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-h-[min(36rem,calc(100vh-6rem))] sm:w-[24rem] sm:rounded-xl sm:border sm:border-l-4 sm:border-warning"
+    >
+      <div className="flex items-start gap-2 border-b px-4 pb-2.5 pt-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium text-warning">
+              Step {step + 1} of {TOUR_STEPS.length}
+            </span>
+            {s.persona && (
+              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {PERSONA_CHIP[s.persona]}
+              </span>
+            )}
+          </div>
+          <h2 id={titleId} className="mt-1 text-base font-semibold leading-snug">
+            {s.title}
+          </h2>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Dismiss checklist"
-          onClick={() => setGuideDismissed(true)}
+          className="size-8 shrink-0"
+          onClick={() => setShowAll((v) => !v)}
+          aria-label="All steps"
+          aria-expanded={showAll}
+          title="All steps"
         >
-          <X />
+          <List className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          onClick={() => dismiss(last ? "completed" : "skipped")}
+          aria-label="Close the tour"
+          title="Close (Escape)"
+        >
+          <X className="size-4" />
         </Button>
       </div>
-      <ol className="space-y-2">
-        {steps.map((s, i) => (
-          <li
-            key={i}
-            className={cn(
-              "flex items-start gap-3 rounded-md border px-3 py-2.5",
-              s.done
-                ? "border-success/25 bg-success-soft/50"
-                : i === nextIndex
-                  ? "border-primary/40 bg-accent/50"
-                  : "border-transparent",
-            )}
-          >
-            <span
-              className={cn(
-                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border font-mono text-[11px]",
-                s.done
-                  ? "border-success bg-success text-background"
-                  : "border-muted-foreground/40 text-muted-foreground",
-              )}
-            >
-              {s.done ? <Check className="size-3" /> : i + 1}
-            </span>
-            <div className="flex-1 text-sm">
-              <p
-                className={cn(
-                  s.done && "text-muted-foreground line-through decoration-muted-foreground/40",
-                )}
-              >
-                {s.text}
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+        {showAll ? (
+          <ol className="space-y-0.5" aria-label="All steps">
+            {TOUR_STEPS.map((x, i) => (
+              <li key={x.title}>
+                <button
+                  onClick={() => goTo(i)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                    i === step && "bg-warning-soft font-medium",
+                  )}
+                >
+                  <span className="w-5 shrink-0 font-mono text-muted-foreground">{i + 1}</span>
+                  <span className="flex-1">{x.title}</span>
+                  {x.persona && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {roleById(x.persona).name.split(" ")[0]}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <>
+            {resetNotice && step === 1 && (
+              <p className="mb-2 rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+                Demo data was reset to the seed, so every step works from a known state.
               </p>
-              {s.hint && !s.done && (
-                <p className="mt-0.5 text-xs text-muted-foreground">{s.hint}</p>
-              )}
+            )}
+            {s.badges && (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {s.badges.map((b) => (
+                  <Badge key={b} kind={b} />
+                ))}
+              </div>
+            )}
+            <div className="space-y-2 leading-relaxed">
+              {s.body.map((p) => (
+                <p key={p}>{p}</p>
+              ))}
             </div>
-            {!s.done && i === nextIndex && (
+            {s.notes?.map((n) => (
+              <p key={n} className="mt-2 text-xs text-muted-foreground">
+                {n}
+              </p>
+            ))}
+            {s.themeTip && (
               <Button
+                variant="ghost"
                 size="sm"
-                className="h-7 shrink-0 text-xs"
-                onClick={() => {
-                  setRole(s.role);
-                  void navigate(
-                    s.clauses
-                      ? { to: "/price-book", search: { tab: "clauses" }, hash: s.hash ?? "" }
-                      : { to: s.to },
-                  );
-                }}
+                className="mt-1 h-7 gap-1.5 px-2 text-xs"
+                onClick={() => toggleTheme()}
               >
-                Go
+                <Moon className="size-3.5" />
+                Try dark theme
               </Button>
             )}
-          </li>
-        ))}
-      </ol>
-      {doneCount === steps.length && (
-        <p className="mt-3 text-sm text-success">
-          Path complete. See{" "}
-          <Link to="/tests" className="underline">
-            Prototype Validation
-          </Link>{" "}
-          for every rule checked at once.
-        </p>
-      )}
+            {s.why && (
+              <p className="mt-3 border-l-2 border-warning/60 pl-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Why it matters: </span>
+                {s.why}
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {needsSwitch && (s.go ?? s.links?.[0]) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => follow((s.go ?? s.links![0])!, persona.id)}
+                >
+                  Switch to {persona.name.split(" ")[0]}
+                </Button>
+              )}
+              {s.go && !needsSwitch && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => follow(s.go!)}
+                >
+                  {s.go.label}
+                </Button>
+              )}
+              {s.links?.map((l) => (
+                <Button
+                  key={l.label}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => follow(l)}
+                >
+                  {l.label}
+                </Button>
+              ))}
+              {s.doForMe && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 border-warning/60 text-xs"
+                  disabled={Boolean(actionDone)}
+                  onClick={doForMe}
+                >
+                  {actionDone ? (
+                    <>
+                      <Check className="size-3.5" /> Already done
+                    </>
+                  ) : (
+                    "Do this step for me"
+                  )}
+                </Button>
+              )}
+            </div>
+            {done && <p className="mt-2 text-xs text-success">{done}</p>}
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 border-t px-4 py-2.5">
+        {step === 0 ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => dismiss("skipped")}>
+              Skip
+            </Button>
+            <Button size="sm" className={cn("ml-auto", mainClass)} onClick={start}>
+              Start tour
+              <ArrowRight className="size-3.5" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => goTo(step - 1)}>
+              <ArrowLeft className="size-3.5" />
+              Back
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => dismiss(last ? "completed" : "skipped")}
+            >
+              Close
+            </Button>
+            {last ? (
+              <Button
+                size="sm"
+                className={cn("ml-auto", mainClass)}
+                onClick={() => dismiss("completed")}
+              >
+                Finish
+                <Check className="size-3.5" />
+              </Button>
+            ) : (
+              <Button size="sm" className={cn("ml-auto", mainClass)} onClick={() => goTo(step + 1)}>
+                Next
+                <ArrowRight className="size-3.5" />
+              </Button>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }

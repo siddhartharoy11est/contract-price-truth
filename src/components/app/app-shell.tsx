@@ -42,6 +42,8 @@ import { ROLES } from "@/data/roles";
 import type { RoleId } from "@/data/types";
 import { useDemo, useDerived } from "@/lib/demo-store";
 import { cn } from "@/lib/utils";
+import { isDark, toggleTheme } from "@/lib/theme";
+import { TourButton, TourProvider } from "./guided-demo";
 
 type NavPath =
   | "/"
@@ -70,14 +72,9 @@ const PAGE_TITLES: [string, string][] = [
 ];
 
 function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-  useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
-  const toggle = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    window.localStorage.setItem("cpt-theme", next ? "dark" : "light");
-  };
+  const [dark, setDarkState] = useState(false);
+  useEffect(() => setDarkState(isDark()), []);
+  const toggle = () => setDarkState(toggleTheme());
   return (
     <DropdownMenuItem
       onSelect={(event) => {
@@ -394,151 +391,158 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (hydrated && !state.accountSelected) return <AccountSelection />;
 
   return (
-    <div className="min-h-screen bg-background">
-      {mobileOpen && (
-        <button
-          className="fixed inset-0 z-40 bg-foreground/40 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation overlay"
-        />
-      )}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 hidden border-r border-sidebar-border transition-[width] lg:block",
-          collapsed ? "w-[72px]" : "w-64",
+    <TourProvider>
+      <div className="min-h-screen bg-background">
+        {mobileOpen && (
+          <button
+            className="fixed inset-0 z-40 bg-foreground/40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation overlay"
+          />
         )}
-      >
-        <Navigation
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-          mobile={false}
-          closeMobile={() => setMobileOpen(false)}
-        />
-      </aside>
-      {mobileOpen && (
-        <aside className="fixed inset-y-0 left-0 z-50 w-72 lg:hidden">
+        <aside
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 hidden border-r border-sidebar-border transition-[width] lg:block",
+            collapsed ? "w-[72px]" : "w-64",
+          )}
+        >
           <Navigation
-            collapsed={false}
+            collapsed={collapsed}
             setCollapsed={setCollapsed}
-            mobile
+            mobile={false}
             closeMobile={() => setMobileOpen(false)}
           />
         </aside>
-      )}
-
-      <div
-        className={cn("min-h-screen transition-[padding] lg:pl-64", collapsed && "lg:pl-[72px]")}
-      >
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-card px-4 sm:px-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open navigation"
-          >
-            <Menu />
-          </Button>
-          <div className="hidden min-w-0 lg:block">
-            <p className="text-[11px] text-muted-foreground">Brightwave Group</p>
-            <p className="truncate text-sm font-medium">{title}</p>
-          </div>
-          <form onSubmit={submitSearch} className="relative ml-auto w-full max-w-sm" role="search">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 bg-background pl-9 pr-3 text-xs"
-              placeholder="Search contracts and suppliers"
-              aria-label="Search contracts and suppliers"
+        {mobileOpen && (
+          <aside className="fixed inset-y-0 left-0 z-50 w-72 lg:hidden">
+            <Navigation
+              collapsed={false}
+              setCollapsed={setCollapsed}
+              mobile
+              closeMobile={() => setMobileOpen(false)}
             />
-          </form>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 shrink-0 gap-1.5 px-2.5 text-xs"
-            onClick={confirmReset}
-            aria-label="Reset demo"
-            title="Reset demo: clears your changes and uploads in this browser"
-          >
-            <RotateCcw className="size-3.5" />
-            <span className="hidden sm:inline">Reset demo</span>
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-                aria-label="Open demo account menu"
-              >
-                <span className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-                  {role.name
-                    .split(" ")
-                    .map((p) => p[0])
-                    .join("")}
-                </span>
-                <span className="hidden xl:block">
-                  <span className="block text-xs font-medium">{role.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">
-                    {role.short} · simulated
-                  </span>
-                </span>
-                <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>
-                <span className="block">{role.name}</span>
-                <span className="block text-xs font-normal text-muted-foreground">
-                  {role.title}
-                </span>
-                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                  Simulated demo account
-                </span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setAccountSelected(false)}>
-                <LogOut />
-                Switch Demo Account
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void navigate({ to: "/about" });
-                }}
-              >
-                <Settings2 />
-                Project and account information
-              </DropdownMenuItem>
-              <ThemeToggle />
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={confirmReset}>
-                <RotateCcw />
-                Reset demo data
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
+          </aside>
+        )}
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-          {hydrated ? (
-            children
-          ) : (
-            <div className="space-y-3" aria-busy="true">
-              <div className="h-8 w-64 animate-pulse rounded bg-muted" />
-              <div className="h-56 animate-pulse rounded bg-muted" />
+        <div
+          className={cn("min-h-screen transition-[padding] lg:pl-64", collapsed && "lg:pl-[72px]")}
+        >
+          <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-card px-4 sm:px-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
+            >
+              <Menu />
+            </Button>
+            <div className="hidden min-w-0 lg:block">
+              <p className="text-[11px] text-muted-foreground">Brightwave Group</p>
+              <p className="truncate text-sm font-medium">{title}</p>
             </div>
-          )}
-        </main>
-        <footer className="border-t px-4 py-3 text-[11px] text-muted-foreground sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-[1600px] flex-wrap gap-x-4 gap-y-1">
-            <span>
-              All data is synthetic. Brightwave Group and BrightHire Staffing are fictional.
-            </span>
-            <span>Nothing is sent to suppliers.</span>
-            <span>Recovery is not tracked.</span>
-          </div>
-        </footer>
+            <form
+              onSubmit={submitSearch}
+              className="relative ml-auto w-full max-w-sm"
+              role="search"
+            >
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 bg-background pl-9 pr-3 text-xs"
+                placeholder="Search contracts and suppliers"
+                aria-label="Search contracts and suppliers"
+              />
+            </form>
+            <TourButton />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0 gap-1.5 px-2.5 text-xs"
+              onClick={confirmReset}
+              aria-label="Reset demo"
+              title="Reset demo: clears your changes and uploads in this browser"
+            >
+              <RotateCcw className="size-3.5" />
+              <span className="hidden sm:inline">Reset demo</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                  aria-label="Open demo account menu"
+                >
+                  <span className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+                    {role.name
+                      .split(" ")
+                      .map((p) => p[0])
+                      .join("")}
+                  </span>
+                  <span className="hidden xl:block">
+                    <span className="block text-xs font-medium">{role.name}</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {role.short} · simulated
+                    </span>
+                  </span>
+                  <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>
+                  <span className="block">{role.name}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {role.title}
+                  </span>
+                  <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                    Simulated demo account
+                  </span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setAccountSelected(false)}>
+                  <LogOut />
+                  Switch Demo Account
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void navigate({ to: "/about" });
+                  }}
+                >
+                  <Settings2 />
+                  Project and account information
+                </DropdownMenuItem>
+                <ThemeToggle />
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={confirmReset}>
+                  <RotateCcw />
+                  Reset demo data
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </header>
+
+          <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+            {hydrated ? (
+              children
+            ) : (
+              <div className="space-y-3" aria-busy="true">
+                <div className="h-8 w-64 animate-pulse rounded bg-muted" />
+                <div className="h-56 animate-pulse rounded bg-muted" />
+              </div>
+            )}
+          </main>
+          <footer className="border-t px-4 py-3 text-[11px] text-muted-foreground sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-[1600px] flex-wrap gap-x-4 gap-y-1">
+              <span>
+                All data is synthetic. Brightwave Group and BrightHire Staffing are fictional.
+              </span>
+              <span>Nothing is sent to suppliers.</span>
+              <span>Recovery is not tracked.</span>
+            </div>
+          </footer>
+        </div>
       </div>
-    </div>
+    </TourProvider>
   );
 }

@@ -19,6 +19,7 @@ import { evaluateLine, type EngineContext, type PriceResult } from "./pricing-en
 import type { EditableField, FieldValue } from "./term-state";
 import * as wf from "./workflow";
 import type { LiveReadOutcome } from "./live-read";
+import { clearTour, TOUR_ACTIONS } from "./tour";
 
 /** v2 re-seeds. Data saved under v1 is not migrated. */
 const STORAGE_KEY = "contract-price-truth:v2";
@@ -87,6 +88,8 @@ interface Store {
   recordExtraction: (docId: string, res: ExtractResponse) => string | null;
   markProgress: (key: keyof DemoState["progress"]) => void;
   setGuideDismissed: (v: boolean) => void;
+  /** Guided tour steps 3 and 4: real workflow transitions, recorded as the given persona. */
+  tourAction: (kind: keyof typeof TOUR_ACTIONS, persona: RoleId) => boolean;
   reset: () => void;
 }
 
@@ -224,7 +227,12 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const reset = useCallback(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage blocked. The in-memory state still resets.
+    }
+    clearTour();
     setState(defaultState());
   }, [setState]);
 
@@ -277,6 +285,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       }),
     markProgress,
     setGuideDismissed,
+    tourAction: (kind, persona) => {
+      if (stateRef.current.role !== persona) setRole(persona);
+      return runOk((s, a) => TOUR_ACTIONS[kind](s, a));
+    },
     reset,
   };
 

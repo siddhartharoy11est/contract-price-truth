@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,14 @@ import { formatTimestamp, isIsoDate } from "@/lib/dates";
 import type { Assessment } from "@/lib/workflow";
 import { DEFAULT_SUPPLIER_ID } from "@/lib/pricing-engine";
 
+interface InvoiceCheckSearch {
+  /** A fixture id the guided tour asks the form to load. Fills the form only. */
+  example?: string;
+}
+
 export const Route = createFileRoute("/invoice-check")({
+  validateSearch: (search: Record<string, unknown>): InvoiceCheckSearch =>
+    typeof search["example"] === "string" ? { example: search["example"] } : {},
   head: () => ({
     meta: [
       { title: "Invoice Check · Contract Price Truth" },
@@ -161,6 +168,14 @@ function InvoiceCheckPage() {
     if (result.status === "Awaiting verification") markProgress("s01Awaiting");
     if (result.status === "Potential discrepancy") markProgress("s01Excess");
   }, [assessment, result, markProgress]);
+
+  const { example } = Route.useSearch();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!example) return;
+    loadExample(example);
+    void navigate({ to: "/invoice-check", search: {}, replace: true });
+  }, [example]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<FormState>) => {
     setForm((f) => ({ ...f, ...patch }));
