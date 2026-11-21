@@ -49,6 +49,47 @@ export function quoteAppears(quote: string, docText: string): boolean {
   return q.length >= 8 && norm(docText).includes(q);
 }
 
+const LIGATURES: Record<string, string> = {
+  "ﬀ": "ff",
+  "ﬁ": "fi",
+  "ﬂ": "fl",
+  "ﬃ": "ffi",
+  "ﬄ": "ffl",
+  "ﬅ": "st",
+  "ﬆ": "st",
+};
+
+/** Normalization for PDF text: ligatures, NFKC, curly quotes, dash variants, soft hyphens, whitespace. */
+export function normalizePdfText(s: string): string {
+  return norm(
+    s
+      .replace(/[ﬀ-ﬆ]/g, (c) => LIGATURES[c] ?? c)
+      .normalize("NFKC")
+      .replace(/­/g, "")
+      .replace(/[‐-―−]/g, "-"),
+  );
+}
+
+export type PageQuoteCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Checks that a quote is an exact substring of the text of the page it cites (1-indexed),
+ * after normalizing whitespace and ligatures.
+ */
+export function quoteOnPage(quote: string | null | undefined, page: number | null | undefined, pages: string[]): PageQuoteCheck {
+  if (!quote || !quote.trim()) return { ok: false, reason: "empty quote" };
+  if (!page || !Number.isInteger(page) || page < 1 || page > pages.length)
+    return { ok: false, reason: `cited page ${page ?? "null"} does not exist` };
+  const q = normalizePdfText(quote).replace(/^["']|["']$/g, "");
+  if (q.length < 8) return { ok: false, reason: "quote shorter than 8 characters" };
+  if (normalizePdfText(pages[page - 1]!).includes(q)) return { ok: true };
+  const elsewhere = pages.findIndex((p) => normalizePdfText(p).includes(q));
+  return {
+    ok: false,
+    reason: elsewhere >= 0 ? `quote is on page ${elsewhere + 1}, not page ${page}` : "quote not found in the document",
+  };
+}
+
 const normGrade = (g: string | null) => {
   if (!g) return null;
   const m = g.toUpperCase().match(/L[234]/);
