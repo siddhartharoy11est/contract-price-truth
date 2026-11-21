@@ -86,6 +86,8 @@ export function UploadContractDialog() {
     if (!signing) return setError("Choose the signing status.");
     setBusy(true);
     try {
+      // Browser only. The SSR build drops this branch, so pdf.js stays out of the server bundle.
+      if (import.meta.env.SSR) return;
       const { readPdfPages } = await import("@/lib/pdf-text");
       const pages = await readPdfPages(await file.arrayBuffer());
       const pageProblem = checkPages(pages);
