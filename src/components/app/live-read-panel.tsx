@@ -1,5 +1,12 @@
+import { useServerFn } from "@tanstack/react-start";
 import { Database } from "lucide-react";
+import { extractDocumentFn } from "@/lib/extract.functions";
 import { Chip } from "./chips";
+
+/** Client handle for the guarded live extraction server function, for the upload flow. */
+export function useLiveExtraction() {
+  return useServerFn(extractDocumentFn);
+}
 
 /**
  * Seeded documents use their stored extraction. The old live re-read of a seed document

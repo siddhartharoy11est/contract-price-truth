@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "contract-price-truth",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "COUNTERS",
+      "database_name": "contract-price-truth-counters",
+      "database_id": "68fec96b-7527-404e-8045-a79a5cef6bbb"
+    }
+  ]
+}
