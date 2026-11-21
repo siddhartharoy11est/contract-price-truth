@@ -88,8 +88,7 @@ function TestsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {r.testCase.scenario === "seed" ? "Seed (T02 Proposed)" : "T02, T04 Verified"}
-                    {r.testCase.ruling && `, ruling ${r.testCase.ruling}`}
+                    {r.testCase.state}
                   </td>
                   <td className="px-3 py-2.5">
                     <ResultStatusChip status={e.status} />
