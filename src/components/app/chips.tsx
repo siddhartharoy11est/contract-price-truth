@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { ContractDocument, TermStatus } from "@/data/types";
 import type { ResultStatus } from "@/lib/pricing-engine";
-import type { FindingStatus } from "@/lib/findings";
+import type { InvestigationStatus } from "@/lib/workflow";
 
 export const chipVariants = cva(
   "inline-flex items-center gap-1 whitespace-nowrap rounded border px-2 py-0.5 text-[11px] font-medium leading-4",
@@ -60,15 +60,16 @@ export function ResultStatusChip({ status }: { status: ResultStatus }) {
   return <Chip tone={resultTone[status]}>{status}</Chip>;
 }
 
-const findingTone: Record<FindingStatus, ChipTone> = {
+const investigationTone: Record<InvestigationStatus, ChipTone> = {
   Open: "warning",
+  Reopened: "warning",
   "With Legal": "legal",
   Confirmed: "danger",
   Dismissed: "neutral",
   Cleared: "success",
 };
-export function FindingStatusChip({ status }: { status: FindingStatus }) {
-  return <Chip tone={findingTone[status]}>{status}</Chip>;
+export function InvestigationStatusChip({ status }: { status: InvestigationStatus }) {
+  return <Chip tone={investigationTone[status]}>{status}</Chip>;
 }
 
 export function SourceLabel({ live }: { live: boolean }) {
@@ -82,7 +83,7 @@ export function SourceLabel({ live }: { live: boolean }) {
 const docTone: Record<ContractDocument["status"], ChipTone> = {
   Signed: "success",
   "Draft, unsigned": "warning",
-  "Letter on file": "info",
+  "Received notice": "info",
 };
 export function DocStatusBadge({ doc }: { doc: ContractDocument }) {
   return (

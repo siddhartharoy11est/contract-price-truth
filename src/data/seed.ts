@@ -153,7 +153,7 @@ export const DOCUMENTS: ContractDocument[] = [
     supplierId: "brighthire",
     title: "Supplier letter: annual adjustment notice",
     kind: "Supplier letter",
-    status: "Letter on file",
+    status: "Received notice",
     signed: true,
     dateLine: "Letter dated 15 Jan 2026.",
     effectiveFrom: "2026-04-01",

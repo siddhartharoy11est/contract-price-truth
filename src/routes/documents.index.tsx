@@ -190,7 +190,7 @@ function DocumentsPage() {
               aria-label="Filter by signing status"
             >
               <option value="all">All signing statuses</option>
-              {["Signed", "Draft, unsigned", "Letter on file"].map((s) => (
+              {["Signed", "Draft, unsigned", "Received notice"].map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>

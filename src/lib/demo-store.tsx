@@ -8,16 +8,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import { roleById } from "@/data/roles";
 import { CONFLICTS, TERMS } from "@/data/seed";
-import type { Grade, InvoiceLine, Location, Reading, RoleId } from "@/data/types";
+import type { InvoiceLine, Reading, RoleId } from "@/data/types";
 import { evaluateLine, type EngineContext, type PriceResult } from "./pricing-engine";
-import { buildContext, initialTermStates, type TermState } from "./term-state";
-import { statusAfterRecalc, type Finding, type Ruling } from "./findings";
-import { formatINR } from "./money";
+import type { EditableField, FieldValue } from "./term-state";
+import * as wf from "./workflow";
 import type { LiveReadOutcome } from "./live-read";
 
-const STORAGE_KEY = "contract-price-truth:v1";
+/** v2 re-seeds. Data saved under v1 is not migrated. */
+const STORAGE_KEY = "contract-price-truth:v2";
+const OLD_KEYS = ["contract-price-truth:v1"];
 
 export interface LiveReadRecord {
   at: string;
@@ -27,46 +29,24 @@ export interface LiveReadRecord {
   outcome?: LiveReadOutcome;
 }
 
-export interface DemoState {
+export interface DemoState extends wf.WorkflowState {
   role: RoleId;
-  terms: Record<string, TermState>;
-  findings: Finding[];
-  rulings: Partial<Record<string, Ruling>>;
-  escalations: Partial<Record<string, { at: string; by: string }>>;
   liveReads: Partial<Record<string, LiveReadRecord>>;
   progress: { s01Awaiting?: boolean; s01Excess?: boolean };
   guideDismissed: boolean;
   accountSelected: boolean;
-  nextFindingNo: number;
 }
 
 const defaultState = (): DemoState => ({
+  ...wf.seedWorkflow(),
   role: "procurement",
-  terms: initialTermStates(),
-  findings: [],
-  rulings: {},
-  escalations: {},
   liveReads: {},
   progress: {},
   guideDismissed: false,
   accountSelected: false,
-  nextFindingNo: 1,
 });
 
 const now = () => new Date().toISOString();
-
-function rulingReadings(rulings: DemoState["rulings"]): Partial<Record<string, Reading>> {
-  return Object.fromEntries(Object.entries(rulings).map(([k, v]) => [k, v!.reading]));
-}
-
-function describeResult(r: PriceResult): string {
-  if (r.status === "Potential discrepancy")
-    return `Potential discrepancy, ${formatINR(r.differencePaise!)} potential excess`;
-  if (r.status === "Match") return `Match at ${formatINR(r.applicableRatePaise!)} per hour`;
-  if (r.status === "Billed below contract")
-    return `Billed below contract by ${formatINR(-r.differencePaise!)}`;
-  return r.status;
-}
 
 interface Store {
   hydrated: boolean;
@@ -77,13 +57,23 @@ interface Store {
   setRole: (r: RoleId) => void;
   selectAccount: (r: RoleId) => void;
   setAccountSelected: (selected: boolean) => void;
-  verifyTerm: (id: string, opts: { editedRatePaise?: number; reason: string }) => void;
-  raiseFinding: (line: InvoiceLine, fixtureId: string | null) => string;
-  confirmFinding: (id: string) => void;
-  dismissFinding: (id: string, reason: string) => void;
-  supplyFact: (id: string, fact: { location?: Location; grade?: Grade }) => void;
-  escalateConflict: (conflictId: string, findingId?: string) => void;
-  recordRuling: (conflictId: string, reading: Reading, reasoning: string) => void;
+  verifyTerm: (id: string, reason: string) => boolean;
+  markNeedsReview: (id: string, reason: string) => boolean;
+  correctField: (
+    id: string,
+    field: EditableField,
+    value: FieldValue,
+    opts: { sourceQuote: string; reason: string; allLocationsConfirmed?: boolean },
+  ) => boolean;
+  setOverride: (id: string, target: string | null, reason: string) => boolean;
+  confirmOverride: (id: string) => boolean;
+  reviewClause: (id: string, choice: "Clear" | "Disputed", question?: string) => boolean;
+  recordRuling: (conflictId: string, reading: Reading, reasoning: string) => boolean;
+  saveCheck: (line: InvoiceLine, fixtureId: string | null) => string | null;
+  supplyFact: (assessmentId: string, fact: { kind: "location" | "grade"; value: string; note?: string }) => boolean;
+  requestReview: (assessmentId: string) => string | null;
+  raiseInvestigation: (assessmentId: string) => string | null;
+  decide: (investigationId: string, kind: wf.DecisionKind, reason: string) => boolean;
   saveLiveRead: (docId: string, rec: LiveReadRecord) => void;
   markProgress: (key: keyof DemoState["progress"]) => void;
   setGuideDismissed: (v: boolean) => void;
@@ -93,285 +83,119 @@ interface Store {
 const StoreContext = createContext<Store | null>(null);
 
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<DemoState>(defaultState);
+  const [state, setStateRaw] = useState<DemoState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const setState = useCallback((next: DemoState) => {
+    stateRef.current = next;
+    setStateRaw(next);
+  }, []);
+
   useEffect(() => {
     try {
+      for (const k of OLD_KEYS) window.localStorage.removeItem(k);
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<DemoState>;
-        setState({
-          ...defaultState(),
-          ...parsed,
-          terms: { ...initialTermStates(), ...parsed.terms },
-        });
+        const seed = defaultState();
+        setState({ ...seed, ...parsed, terms: { ...seed.terms, ...parsed.terms } });
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
     setHydrated(true);
-  }, []);
+  }, [setState]);
 
   useEffect(() => {
     if (hydrated) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state, hydrated]);
 
-  const ctx = useMemo(
-    () => buildContext(state.terms, rulingReadings(state.rulings)),
-    [state.terms, state.rulings],
-  );
+  const ctx = useMemo(() => wf.contextOf(state), [state]);
   const role = roleById(state.role);
 
-  const actor = useCallback((s: DemoState) => {
-    const r = roleById(s.role);
+  const actor = useCallback((): wf.Actor => {
+    const r = roleById(stateRef.current.role);
     return { by: r.name, role: r.id, at: now() };
   }, []);
 
+  /** Runs a pure transition. Rule violations show as a toast and leave state unchanged. */
+  const run = useCallback(
+    <T,>(fn: (s: DemoState, a: wf.Actor) => { state: wf.WorkflowState; value: T }): T | null => {
+      try {
+        const out = fn(stateRef.current, actor());
+        setState({ ...stateRef.current, ...out.state });
+        return out.value;
+      } catch (e) {
+        if (e instanceof wf.WorkflowError) {
+          toast.error(e.message);
+          return null;
+        }
+        throw e;
+      }
+    },
+    [actor, setState],
+  );
+  const runOk = useCallback(
+    (fn: (s: DemoState, a: wf.Actor) => wf.WorkflowState) =>
+      run((s, a) => ({ state: fn(s, a), value: true })) === true,
+    [run],
+  );
+
   const evaluate = useCallback((line: InvoiceLine) => evaluateLine(line, ctx), [ctx]);
 
-  const setRole = useCallback((r: RoleId) => setState((s) => ({ ...s, role: r })), []);
+  const setRole = useCallback((r: RoleId) => setState({ ...stateRef.current, role: r }), [setState]);
   const selectAccount = useCallback(
-    (r: RoleId) => setState((s) => ({ ...s, role: r, accountSelected: true })),
-    [],
+    (r: RoleId) => setState({ ...stateRef.current, role: r, accountSelected: true }),
+    [setState],
   );
   const setAccountSelected = useCallback(
-    (accountSelected: boolean) => setState((s) => ({ ...s, accountSelected })),
-    [],
+    (accountSelected: boolean) => setState({ ...stateRef.current, accountSelected }),
+    [setState],
   );
 
-  const verifyTerm: Store["verifyTerm"] = useCallback(
-    (id, { editedRatePaise, reason }) =>
-      setState((s) => {
-        const prev = s.terms[id]!;
-        const a = actor(s);
-        const seed = TERMS.find((t) => t.id === id)!;
-        const edited = editedRatePaise !== undefined && editedRatePaise !== seed.ratePaise;
-        const { editedRatePaise: _previousEdit, ...rest } = prev;
-        const next: TermState = {
-          ...rest,
-          status: "Verified",
-          secondReadDiffers: false,
+  const saveLiveRead = useCallback(
+    (docId: string, rec: LiveReadRecord) => {
+      const s = stateRef.current;
+      const terms = { ...s.terms };
+      for (const tid of rec.outcome?.differingStoredIds ?? []) {
+        const t = terms[tid]!;
+        terms[tid] = {
+          ...t,
+          status: t.status === "Ignored" ? "Ignored" : "Proposed",
+          secondReadDiffers: true,
           history: [
-            ...prev.history,
-            {
-              ...a,
-              action: edited
-                ? `Verified with edited rate ${formatINR(editedRatePaise!)} (AI proposed ${formatINR(seed.ratePaise!)})`
-                : "Verified",
-              reason: reason.trim() || "No reason given",
-            },
+            ...t.history,
+            { at: rec.at, by: "Live AI second read", role: "system", action: "Second read differs. Re-verification required." },
           ],
         };
-        if (edited) next.editedRatePaise = editedRatePaise;
-        return { ...s, terms: { ...s.terms, [id]: next } };
-      }),
-    [actor],
-  );
-
-  const raiseFinding: Store["raiseFinding"] = useCallback(
-    (line, fixtureId) => {
-      const newId = `F-${String(stateRef.current.nextFindingNo).padStart(3, "0")}`;
-      setState((s) => {
-        const a = actor(s);
-        const result = evaluateLine(line, buildContext(s.terms, rulingReadings(s.rulings)));
-        const finding: Finding = {
-          id: newId,
-          createdAt: a.at,
-          fixtureId,
-          line,
-          status: "Open",
-          raisedStatus: result.status,
-          timeline: [{ ...a, text: `Raised from Invoice Check: ${describeResult(result)}.` }],
-        };
-        return { ...s, findings: [finding, ...s.findings], nextFindingNo: s.nextFindingNo + 1 };
-      });
-      return newId;
+      }
+      let next: wf.WorkflowState = { ...s, terms };
+      if (rec.outcome?.differingStoredIds?.length)
+        next = wf.recompute(next, { by: "Live AI second read", role: "system", at: rec.at }, "a second read differed");
+      setState({ ...s, ...next, liveReads: { ...s.liveReads, [docId]: rec } });
     },
-    [actor],
+    [setState],
   );
 
-  const updateFinding = useCallback(
-    (id: string, fn: (f: Finding, s: DemoState, a: ReturnType<typeof actor>) => Finding) =>
-      setState((s) => {
-        const a = actor(s);
-        return { ...s, findings: s.findings.map((f) => (f.id === id ? fn(f, s, a) : f)) };
-      }),
-    [actor],
-  );
-
-  const confirmFinding: Store["confirmFinding"] = useCallback(
-    (id) =>
-      updateFinding(id, (f, s, a) => {
-        const r = evaluateLine(f.line, buildContext(s.terms, rulingReadings(s.rulings)));
-        if (r.status !== "Potential discrepancy") return f;
-        return {
-          ...f,
-          status: "Confirmed",
-          confirmedPaise: r.differencePaise!,
-          timeline: [
-            ...f.timeline,
-            { ...a, text: `Confirmed discrepancy of ${formatINR(r.differencePaise!)}.` },
-          ],
-        };
-      }),
-    [updateFinding],
-  );
-
-  const dismissFinding: Store["dismissFinding"] = useCallback(
-    (id, reason) =>
-      updateFinding(id, (f, _s, a) => ({
-        ...f,
-        status: "Dismissed",
-        timeline: [...f.timeline, { ...a, text: `Dismissed. Reason: ${reason.trim()}` }],
-      })),
-    [updateFinding],
-  );
-
-  const supplyFact: Store["supplyFact"] = useCallback(
-    (id, fact) =>
-      updateFinding(id, (f, s, a) => {
-        const line = {
-          ...f.line,
-          ...(fact.location ? { location: fact.location } : {}),
-          ...(fact.grade ? { grade: fact.grade } : {}),
-        };
-        const r = evaluateLine(line, buildContext(s.terms, rulingReadings(s.rulings)));
-        const what = fact.location ? `delivery center: ${fact.location}` : `grade: ${fact.grade}`;
-        return {
-          ...f,
-          line,
-          factsSupplied: true,
-          status: statusAfterRecalc(r, Boolean(f.escalated)),
-          timeline: [
-            ...f.timeline,
-            { ...a, text: `Supplied ${what}. Recalculated: ${describeResult(r)}.` },
-          ],
-        };
-      }),
-    [updateFinding],
-  );
-
-  const escalateConflict: Store["escalateConflict"] = useCallback(
-    (conflictId, findingId) =>
-      setState((s) => {
-        const a = actor(s);
-        return {
-          ...s,
-          escalations: {
-            ...s.escalations,
-            [conflictId]: s.escalations[conflictId] ?? { at: a.at, by: a.by },
-          },
-          findings: s.findings.map((f) =>
-            f.id === findingId
-              ? {
-                  ...f,
-                  escalated: true,
-                  status: "With Legal",
-                  timeline: [
-                    ...f.timeline,
-                    { ...a, text: "Escalated to Legal for a ruling on the clause conflict." },
-                  ],
-                }
-              : f,
-          ),
-        };
-      }),
-    [actor],
-  );
-
-  const recordRuling: Store["recordRuling"] = useCallback(
-    (conflictId, reading, reasoning) =>
-      setState((s) => {
-        const a = actor(s);
-        const conflict = CONFLICTS.find((c) => c.id === conflictId)!;
-        const before = buildContext(s.terms, rulingReadings(s.rulings));
-        const rulings = {
-          ...s.rulings,
-          [conflictId]: { reading, reasoning: reasoning.trim(), by: a.by, at: a.at },
-        };
-        // A ruling never verifies the conflict terms. Their review status stays as Procurement left it.
-        const terms = { ...s.terms };
-        for (const tid of conflict.termIds) {
-          const t = terms[tid]!;
-          terms[tid] = {
-            ...t,
-            history: [
-              ...t.history,
-              {
-                ...a,
-                action: `Legal ruling recorded: Reading ${reading}`,
-                reason: reasoning.trim(),
-              },
-            ],
-          };
-        }
-        const after = buildContext(terms, rulingReadings(rulings));
-        const findings = s.findings.map((f) => {
-          if (f.status !== "Open" && f.status !== "With Legal") return f;
-          const prev = evaluateLine(f.line, before);
-          if (prev.conflictId !== conflictId || prev.status !== "Needs Legal") return f;
-          const r = evaluateLine(f.line, after);
-          return {
-            ...f,
-            status: statusAfterRecalc(r, false),
-            timeline: [
-              ...f.timeline,
-              {
-                ...a,
-                text: `Legal ruling recorded (Reading ${reading}). Recalculated: ${describeResult(r)}.`,
-              },
-            ],
-          };
-        });
-        return { ...s, rulings, terms, findings };
-      }),
-    [actor],
-  );
-
-  const saveLiveRead: Store["saveLiveRead"] = useCallback(
-    (docId, rec) =>
-      setState((s) => {
-        const terms = { ...s.terms };
-        for (const tid of rec.outcome?.differingStoredIds ?? []) {
-          const t = terms[tid]!;
-          terms[tid] = {
-            ...t,
-            status: t.status === "Ignored" ? "Ignored" : "Proposed",
-            secondReadDiffers: true,
-            history: [
-              ...t.history,
-              {
-                at: rec.at,
-                by: "Live AI second read",
-                role: "system",
-                action: "Second read differs. Re-verification required.",
-              },
-            ],
-          };
-        }
-        return { ...s, terms, liveReads: { ...s.liveReads, [docId]: rec } };
-      }),
-    [],
-  );
-
-  const markProgress: Store["markProgress"] = useCallback(
-    (key) =>
-      setState((s) => (s.progress[key] ? s : { ...s, progress: { ...s.progress, [key]: true } })),
-    [],
+  const markProgress = useCallback(
+    (key: keyof DemoState["progress"]) => {
+      const s = stateRef.current;
+      if (!s.progress[key]) setState({ ...s, progress: { ...s.progress, [key]: true } });
+    },
+    [setState],
   );
 
   const setGuideDismissed = useCallback(
-    (v: boolean) => setState((s) => ({ ...s, guideDismissed: v })),
-    [],
+    (v: boolean) => setState({ ...stateRef.current, guideDismissed: v }),
+    [setState],
   );
 
   const reset = useCallback(() => {
     window.localStorage.removeItem(STORAGE_KEY);
     setState(defaultState());
-  }, []);
+  }, [setState]);
 
   const value: Store = {
     hydrated,
@@ -382,13 +206,30 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
     setRole,
     selectAccount,
     setAccountSelected,
-    verifyTerm,
-    raiseFinding,
-    confirmFinding,
-    dismissFinding,
-    supplyFact,
-    escalateConflict,
-    recordRuling,
+    verifyTerm: (id, reason) => runOk((s, a) => wf.verifyTerm(s, a, id, reason)),
+    markNeedsReview: (id, reason) => runOk((s, a) => wf.markNeedsReview(s, a, id, reason)),
+    correctField: (id, field, v, opts) => runOk((s, a) => wf.correctField(s, a, id, field, v, opts)),
+    setOverride: (id, target, reason) => runOk((s, a) => wf.setOverride(s, a, id, target, reason)),
+    confirmOverride: (id) => runOk((s, a) => wf.confirmOverride(s, a, id)),
+    reviewClause: (id, choice, q) => runOk((s, a) => wf.reviewClause(s, a, id, choice, q)),
+    recordRuling: (cid, reading, reasoning) => runOk((s, a) => wf.recordRuling(s, a, cid, reading, reasoning)),
+    saveCheck: (line, fixtureId) =>
+      run((s, a) => {
+        const out = wf.saveCheck(s, a, line, fixtureId);
+        return { state: out.state, value: out.assessmentId };
+      }),
+    supplyFact: (id, fact) => runOk((s, a) => wf.supplyFact(s, a, id, fact)),
+    requestReview: (id) =>
+      run((s, a) => {
+        const out = wf.requestReview(s, a, id);
+        return { state: out.state, value: out.investigationId };
+      }),
+    raiseInvestigation: (id) =>
+      run((s, a) => {
+        const out = wf.raiseInvestigation(s, a, id);
+        return { state: out.state, value: out.investigationId };
+      }),
+    decide: (id, kind, reason) => runOk((s, a) => wf.decide(s, a, id, kind, reason)),
     saveLiveRead,
     markProgress,
     setGuideDismissed,
@@ -404,37 +245,77 @@ export function useDemo(): Store {
   return s;
 }
 
+export interface InvestigationRow {
+  investigation: wf.Investigation;
+  assessment: wf.Assessment;
+  latest: wf.AssessmentVersion;
+  kind: wf.InvestigationKind;
+  status: wf.InvestigationStatus;
+}
+
+/** Investigations joined with their assessment and derived kind and status. */
+export function useInvestigations(): InvestigationRow[] {
+  const { state } = useDemo();
+  return useMemo(
+    () =>
+      state.investigations.map((investigation) => {
+        const assessment = state.assessments.find((a) => a.id === investigation.assessmentId)!;
+        return {
+          investigation,
+          assessment,
+          latest: assessment.versions[assessment.versions.length - 1]!,
+          kind: wf.investigationKind(assessment),
+          status: wf.investigationStatus(investigation, assessment, state.conflictCases),
+        };
+      }),
+    [state.investigations, state.assessments, state.conflictCases],
+  );
+}
+
 /** Derived counts used by the header metric, banners and the guided demo. */
 export function useDerived() {
-  const { state, evaluate } = useDemo();
+  const { state } = useDemo();
+  const rows = useInvestigations();
   return useMemo(() => {
     const countable = TERMS.filter((t) => t.initialStatus !== "Ignored");
     const verified = countable.filter((t) => state.terms[t.id]?.status === "Verified").length;
-    const toVerify = TERMS.filter((t) => state.terms[t.id]?.status === "Proposed").length;
-    const evaluated = state.findings.map((f) => ({ finding: f, result: evaluate(f.line) }));
-    const potentialPaise = evaluated
-      .filter((e) => e.finding.status === "Open" && e.result.status === "Potential discrepancy")
-      .reduce((sum, e) => sum + e.result.differencePaise!, 0);
-    const confirmedPaise = state.findings
-      .filter((f) => f.status === "Confirmed")
-      .reduce((sum, f) => sum + (f.confirmedPaise ?? 0), 0);
-    const openFindings = state.findings.filter((f) => f.status === "Open").length;
-    const conflictsToEscalate = CONFLICTS.filter(
-      (c) => !state.escalations[c.id] && !state.rulings[c.id],
+    const toVerify = TERMS.filter((t) => {
+      const st = state.terms[t.id]?.status;
+      return st === "Proposed" || st === "Needs review";
+    }).length;
+    const rateToVerify = TERMS.filter(
+      (t) => t.kind === "rate" && ["Proposed", "Needs review"].includes(state.terms[t.id]?.status ?? ""),
     ).length;
-    const conflictsWithLegal = CONFLICTS.filter(
-      (c) => state.escalations[c.id] && !state.rulings[c.id],
+    const clausesToReview = TERMS.filter(
+      (t) => (t.kind === "clause" || t.kind === "notice") && state.terms[t.id]?.status !== "Verified",
     ).length;
+    const unconfirmedLinks = TERMS.filter((t) => {
+      const s = state.terms[t.id];
+      return s?.status === "Verified" && s.override && !s.override.confirmed;
+    }).length;
+    // Potential: latest version is a Potential discrepancy (all rates Verified by construction), not yet decided.
+    const potentialPaise = rows
+      .filter((r) => r.latest.result.status === "Potential discrepancy" && (r.status === "Open" || r.status === "Reopened"))
+      .reduce((sum, r) => sum + r.latest.result.differencePaise!, 0);
+    const confirmedPaise = rows
+      .filter((r) => r.status === "Confirmed")
+      .reduce((sum, r) => sum + (r.investigation.decisions.at(-1)?.amountPaise ?? 0), 0);
+    const openInvestigations = rows.filter((r) => ["Open", "Reopened", "With Legal"].includes(r.status)).length;
+    const conflictsOpen = CONFLICTS.filter((c) => state.conflictCases[c.id]?.status !== "Ruled").length;
+    const conflictsWithLegal = CONFLICTS.filter((c) => state.conflictCases[c.id]?.status === "With Legal").length;
     return {
       verified,
       totalTerms: countable.length,
       toVerify,
-      evaluated,
+      rateToVerify,
+      clausesToReview,
+      unconfirmedLinks,
       potentialPaise,
       confirmedPaise,
-      openFindings,
-      conflictsToEscalate,
+      openInvestigations,
+      conflictsOpen,
       conflictsWithLegal,
+      rows,
     };
-  }, [state, evaluate]);
+  }, [state.terms, state.conflictCases, rows]);
 }

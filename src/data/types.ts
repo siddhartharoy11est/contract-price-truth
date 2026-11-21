@@ -18,7 +18,7 @@ export interface ContractDocument {
   supplierId: string;
   title: string;
   kind: string;
-  status: "Signed" | "Draft, unsigned" | "Letter on file";
+  status: "Signed" | "Draft, unsigned" | "Received notice";
   /** Declared signing status. Not cryptographically checked. */
   signed: boolean;
   dateLine: string;

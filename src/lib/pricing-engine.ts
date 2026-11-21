@@ -366,7 +366,6 @@ function validate(line: InvoiceLine): string[] {
     errors.push("Billed rate must be more than zero.");
   if (line.poRatePaise !== null && (!Number.isInteger(line.poRatePaise) || line.poRatePaise <= 0))
     errors.push("PO rate must be more than zero, or left empty.");
-  if (!line.grade.trim()) errors.push("Enter a grade.");
   return errors;
 }
 
@@ -414,6 +413,17 @@ export function evaluateLine(line: InvoiceLine, ctx: EngineContext): PriceResult
       needs: [{ kind: "no-rate", question }],
       blockers: [{ status: "Needs information", owner: "Finance", reason: question, termIds: [] }],
       explanation: ["This supplier has no signed rate on file, so no price can be established."],
+    };
+  }
+  if (!line.grade.trim()) {
+    const question = `Which role is this line for? Choose one of ${roleMap.map((r) => r.grade).join(", ")}.`;
+    return {
+      ...emptyResult(null),
+      status: "Needs information",
+      need: { kind: "grade", question },
+      needs: [{ kind: "grade", question }],
+      blockers: [{ status: "Needs information", owner: "Finance", reason: question, termIds: [] }],
+      explanation: ["The invoice line does not state a role, so no price can be established."],
     };
   }
   const grade = resolveGrade(line.grade, roleMap);
