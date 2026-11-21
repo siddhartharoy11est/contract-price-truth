@@ -34,17 +34,23 @@ function LegalPage() {
     select: (l) => ({ hash: l.hash, pathname: l.pathname }),
   });
   const navigate = useNavigate();
-  const escalated = CONFLICTS.filter((c) => state.escalations[c.id] || state.rulings[c.id]);
+  const sent = (id: string) => (state.conflictCases[id]?.status ?? "Open") !== "Open";
+  const escalated = CONFLICTS.filter((c) => sent(c.id));
   useEffect(() => {
-    if (CONFLICTS.some((c) => c.id === hash && (state.escalations[c.id] || state.rulings[c.id])))
+    if (
+      CONFLICTS.some(
+        (c) => c.id === hash && (state.conflictCases[c.id]?.status ?? "Open") !== "Open",
+      )
+    )
       void navigate({ to: "/legal/$conflictId", params: { conflictId: hash }, replace: true });
-  }, [hash, state.escalations, state.rulings, navigate]);
+  }, [hash, state.conflictCases, navigate]);
   if (pathname !== "/legal") return <Outlet />;
   return (
     <div>
       <PageHeader title="Legal Reviews">
-        Only genuine clause conflicts reach Legal. Each decision is recorded with its reasoning and
-        recalculates dependent investigations.
+        Only conflicts Procurement marked Disputed reach Legal. A ruling is a human decision with
+        reasoning, cannot be changed, never verifies the clauses, and recomputes every dependent
+        check as a new version.
       </PageHeader>
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
@@ -66,7 +72,7 @@ function LegalPage() {
             <table className="w-full min-w-[800px] text-sm">
               <thead>
                 <tr>
-                  {["Review", "Supplier", "Contractual question", "Escalated by", "Status", ""].map(
+                  {["Review", "Supplier", "Contractual question", "Sent by", "Status", ""].map(
                     (h) => (
                       <th key={h} className="table-heading">
                         {h}
@@ -78,7 +84,7 @@ function LegalPage() {
               <tbody className="divide-y">
                 {escalated.map((c) => {
                   const ruling = state.rulings[c.id];
-                  const escalation = state.escalations[c.id];
+                  const escalation = state.conflictCases[c.id]?.questions[0];
                   return (
                     <tr key={c.id} className="hover:bg-muted/40">
                       <td className="table-cell font-mono text-xs">{c.id}</td>
@@ -91,6 +97,11 @@ function LegalPage() {
                         >
                           {c.question}
                         </Link>
+                        {state.conflictCases[c.id]?.questions.map((q, i) => (
+                          <span key={i} className="mt-1 block text-xs text-muted-foreground">
+                            Procurement asks: "{q.text}"
+                          </span>
+                        ))}
                       </td>
                       <td className="table-cell text-xs text-muted-foreground">
                         {escalation ? (
