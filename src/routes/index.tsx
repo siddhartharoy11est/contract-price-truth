@@ -23,17 +23,10 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Procurement Overview · Contract Price Truth" },
-      {
-        name: "description",
-        content:
-          "Monitor supplier agreements, pricing changes and pending reviews from a live contract operations dashboard.",
-      },
-      { property: "og:title", content: "Procurement Overview · Contract Price Truth" },
-      {
-        property: "og:description",
-        content: "Monitor supplier agreements, pricing changes and pending reviews.",
-      },
+      { title: "Contract Price Truth" },
+      { name: "description", content: "Know the price you agreed to pay." },
+      { property: "og:title", content: "Contract Price Truth" },
+      { property: "og:description", content: "Know the price you agreed to pay." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
