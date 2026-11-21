@@ -13,9 +13,8 @@ export interface TermHistoryEntry {
 export interface TermState {
   status: TermStatus;
   /**
-   * Override link status for a term with `replaces`. Absent means the link follows the
-   * term's own verification (the prototype UI confirms both in one step). False means the
-   * link is explicitly unconfirmed.
+   * Override link status for a term with `replaces`. The link is confirmed only when this is
+   * explicitly true. Verifying the amending term does not confirm the link (PRD 6.2, 6.3).
    */
   overrideVerified?: boolean;
   editedRatePaise?: number;
@@ -38,9 +37,7 @@ export function buildEngineTerms(states: Record<string, TermState>): EngineTerm[
       ratePaise: s?.editedRatePaise ?? t.ratePaise,
       signed: doc?.signed ?? false,
       supplierId: doc?.supplierId,
-      overrideVerified: t.replaces
-        ? (s?.overrideVerified ?? (s?.status ?? t.initialStatus) === "Verified")
-        : undefined,
+      overrideVerified: t.replaces ? s?.overrideVerified === true : undefined,
     };
   });
 }

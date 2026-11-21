@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TEST_CASES, runTestCase } from "./test-cases";
 import { evaluateLine, permittedAdjustedRate, resolveGrade, type EngineContext } from "./pricing-engine";
-import { fixtureContext, type FixtureState } from "./term-state";
+import { buildContext, fixtureContext, statesWithVerified, type FixtureState } from "./term-state";
 import { fixtureById } from "@/data/fixtures";
 import type { EngineTerm, InvoiceLine } from "@/data/types";
 import { formatINR, parseRupees, amountFor } from "./money";
@@ -127,6 +127,21 @@ describe("PRD 8.3 unit tests", () => {
     expect(r.status).toBe("Awaiting verification");
     expect(r.blockers?.[0]?.termIds).toContain("U06");
     expect(r.expectedPaise).toBeNull();
+  });
+});
+
+describe("override links", () => {
+  it("a Verified amending term with an unconfirmed link waits, confirming the link gives the verdict", () => {
+    const line = fixtureById("S01")!.line;
+    const states = statesWithVerified(["T02", "T04"]);
+    const before = evaluateLine(line, buildContext(states, {}));
+    expect(before.status).toBe("Awaiting verification");
+    expect(before.explanation.join(" ")).toContain("Relationship between T01 and T02 not confirmed");
+    expect(before.expectedPaise).toBeNull();
+    states["T02"] = { ...states["T02"]!, overrideVerified: true };
+    const after = evaluateLine(line, buildContext(states, {}));
+    expect(after.status).toBe("Potential discrepancy");
+    expect(after.differencePaise).toBe(1500000);
   });
 });
 
