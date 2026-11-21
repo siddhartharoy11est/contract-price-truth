@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { ClipboardList, FilePlus2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Sheet,
@@ -12,27 +13,28 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { PageHeader } from "@/components/app/page-header";
-import { FindingStatusChip, ResultStatusChip } from "@/components/app/chips";
+import { Chip, InvestigationStatusChip, ResultStatusChip } from "@/components/app/chips";
 import { LineSummary, ResultBody } from "@/components/app/result-card";
 import { RoleGate } from "@/components/app/role-gate";
 import { DiscrepancyTotals } from "@/components/app/totals";
-import { LOCATIONS } from "@/data/seed";
-import type { Grade } from "@/data/types";
-import { useDemo } from "@/lib/demo-store";
-import type { Finding } from "@/lib/findings";
-import type { PriceResult } from "@/lib/pricing-engine";
+import { VersionHistory } from "@/components/app/version-history";
+import { ROLE_MAPS, supplierById, termById } from "@/data/seed";
+import { useDemo, useInvestigations, type InvestigationRow } from "@/lib/demo-store";
+import { DEFAULT_SUPPLIER_ID } from "@/lib/pricing-engine";
 import { formatINR } from "@/lib/money";
-import { formatPeriod, formatTimestamp } from "@/lib/dates";
+import { formatTimestamp } from "@/lib/dates";
+import { timelineText } from "@/lib/workflow";
 import { cn } from "@/lib/utils";
 
-type InvestigationTab = "open" | "info" | "legal" | "confirmed" | "resolved" | "all";
+type InvestigationTab = "open" | "legal" | "confirmed" | "resolved" | "all";
 interface InvestigationSearch {
   tab?: InvestigationTab;
 }
+const TABS: InvestigationTab[] = ["open", "legal", "confirmed", "resolved", "all"];
 
 export const Route = createFileRoute("/findings")({
   validateSearch: (search: Record<string, unknown>): InvestigationSearch => ({
-    ...(["open", "info", "legal", "confirmed", "resolved", "all"].includes(String(search["tab"]))
+    ...(TABS.includes(search["tab"] as InvestigationTab)
       ? { tab: search["tab"] as InvestigationTab }
       : {}),
   }),
@@ -42,12 +44,12 @@ export const Route = createFileRoute("/findings")({
       {
         name: "description",
         content:
-          "Invoice pricing investigations raised by Finance and resolved by Procurement, with evidence and review history.",
+          "One investigation per checked invoice line, with assessment versions, append-only decisions and a timeline.",
       },
       { property: "og:title", content: "Investigations · Contract Price Truth" },
       {
         property: "og:description",
-        content: "Invoice pricing investigations with contractual evidence and review history.",
+        content: "Invoice pricing investigations with versions, decisions and a timeline.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -56,52 +58,38 @@ export const Route = createFileRoute("/findings")({
   component: InvestigationsPage,
 });
 
+const inTab = (r: InvestigationRow, tab: InvestigationTab) => {
+  if (tab === "all") return true;
+  if (tab === "open") return r.status === "Open" || r.status === "Reopened";
+  if (tab === "legal") return r.status === "With Legal";
+  if (tab === "confirmed") return r.status === "Confirmed";
+  return r.status === "Dismissed" || r.status === "Cleared";
+};
+
+const TAB_LABEL: Record<InvestigationTab, string> = {
+  open: "Open",
+  legal: "With Legal",
+  confirmed: "Confirmed",
+  resolved: "Dismissed or cleared",
+  all: "All",
+};
+
 function InvestigationsPage() {
-  const { state, evaluate } = useDemo();
+  const rows = useInvestigations();
   const hash = useLocation({ select: (l) => l.hash });
-  const { tab = "open" } = Route.useSearch();
+  const { tab = "all" } = Route.useSearch();
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
-    if (state.findings.some((f) => f.id === hash)) setSelected(hash);
-  }, [hash, state.findings]);
-
-  const categorized = useMemo(
-    () => state.findings.map((finding) => ({ finding, result: evaluate(finding.line) })),
-    [state.findings, evaluate],
-  );
-  const matches = (finding: Finding, result: PriceResult, target: InvestigationTab) => {
-    if (target === "all") return true;
-    if (target === "confirmed") return finding.status === "Confirmed";
-    if (target === "resolved")
-      return finding.status === "Dismissed" || finding.status === "Cleared";
-    if (target === "legal")
-      return (
-        finding.status === "With Legal" ||
-        (finding.status === "Open" && result.status === "Needs Legal")
-      );
-    if (target === "info")
-      return finding.status === "Open" && result.status === "Needs information";
-    return (
-      finding.status === "Open" &&
-      result.status !== "Needs information" &&
-      result.status !== "Needs Legal"
-    );
-  };
-  const visible = categorized.filter(({ finding, result }) => matches(finding, result, tab));
-  const tabs: { id: InvestigationTab; label: string }[] = [
-    { id: "open", label: "Open" },
-    { id: "info", label: "Awaiting information" },
-    { id: "legal", label: "Awaiting Legal" },
-    { id: "confirmed", label: "Confirmed" },
-    { id: "resolved", label: "Resolved" },
-    { id: "all", label: "All" },
-  ];
+    if (rows.some((r) => r.investigation.id === hash)) setSelected(hash);
+  }, [hash, rows]);
+  const visible = rows.filter((r) => inTab(r, tab));
+  const current = rows.find((r) => r.investigation.id === selected);
 
   return (
     <div>
       <PageHeader title="Investigations">
-        Invoice pricing issues raised by Finance and investigated by Procurement. Legal decides only
-        genuine contractual conflicts.
+        One investigation per checked invoice line. Its kind follows the latest assessment version.
+        Decisions are append-only and name the version they were made against.
       </PageHeader>
       <div className="mb-5">
         <DiscrepancyTotals />
@@ -111,38 +99,35 @@ function InvestigationsPage() {
         role="tablist"
         aria-label="Investigation statuses"
       >
-        {tabs.map((item) => {
-          const count = categorized.filter(({ finding, result }) =>
-            matches(finding, result, item.id),
-          ).length;
-          return (
-            <Link
-              key={item.id}
-              to="/findings"
-              search={item.id === "open" ? {} : { tab: item.id }}
-              role="tab"
-              aria-selected={tab === item.id}
-              className={cn(
-                "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium",
-                tab === item.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {item.label}
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{count}</span>
-            </Link>
-          );
-        })}
+        {TABS.map((id) => (
+          <Link
+            key={id}
+            to="/findings"
+            search={id === "all" ? {} : { tab: id }}
+            role="tab"
+            aria-selected={tab === id}
+            className={cn(
+              "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium",
+              tab === id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {TAB_LABEL[id]}
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+              {rows.filter((r) => inTab(r, id)).length}
+            </span>
+          </Link>
+        ))}
       </div>
       <section className="surface overflow-hidden">
-        {state.findings.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="px-4 py-14 text-center">
             <ClipboardList className="mx-auto mb-3 size-7 text-muted-foreground" />
             <p className="text-sm font-semibold">No investigations yet</p>
             <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-              Raise an investigation from Invoice Check when a line shows a potential discrepancy,
-              needs information or needs Legal.
+              In Invoice Check, Request review on any result other than Match, or Raise
+              investigation on a Potential discrepancy.
             </p>
             <Button asChild size="sm" className="mt-4">
               <Link to="/invoice-check">
@@ -152,73 +137,55 @@ function InvestigationsPage() {
             </Button>
           </div>
         ) : visible.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <p className="text-sm font-medium">No investigations in this status</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Select another status to see the saved worklist.
-            </p>
-          </div>
+          <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+            No investigations in this status.
+          </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr>
-                  {[
-                    "Investigation",
-                    "Supplier",
-                    "Service and resource",
-                    "Billed rate",
-                    "Current assessment",
-                    "Potential difference",
-                    "Status",
-                  ].map((h) => (
-                    <th key={h} className="table-heading">
-                      {h}
-                    </th>
-                  ))}
+                  {["Investigation", "Line", "Kind", "Latest version", "Potential", "Status"].map(
+                    (h) => (
+                      <th key={h} className="table-heading">
+                        {h}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {visible.map(({ finding: f, result }) => (
+                {visible.map((r) => (
                   <tr
-                    key={f.id}
-                    onClick={() => setSelected(f.id)}
+                    key={r.investigation.id}
+                    onClick={() => setSelected(r.investigation.id)}
                     className="cursor-pointer hover:bg-muted/40"
                   >
                     <td className="table-cell">
-                      <button className="font-mono text-xs font-medium text-primary hover:underline">
-                        {f.id}
-                      </button>
-                      {f.fixtureId && (
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                          Example {f.fixtureId}
-                        </span>
-                      )}
-                    </td>
-                    <td className="table-cell text-xs">BrightHire Staffing</td>
-                    <td className="table-cell text-xs">
-                      <span>{formatPeriod(f.line.serviceStart, f.line.serviceEnd)}</span>
-                      <span className="mt-0.5 block text-muted-foreground">
-                        {f.line.grade} · {f.line.location || "Location not stated"} · {f.line.hours}{" "}
-                        h
+                      <span className="font-mono text-xs font-medium text-primary">
+                        {r.investigation.id}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {r.assessment.id}
+                        {r.assessment.fixtureId ? ` · ${r.assessment.fixtureId}` : ""} ·{" "}
+                        {r.investigation.origin}
                       </span>
                     </td>
-                    <td className="table-cell tabular font-mono text-xs">
-                      {formatINR(f.line.billedRatePaise)}/h
+                    <td className="table-cell text-xs">
+                      <LineSummary line={r.latest.inputs.line} />
+                    </td>
+                    <td className="table-cell text-xs">{r.kind}</td>
+                    <td className="table-cell">
+                      <span className="mr-1.5 font-mono text-xs">v{r.latest.n}</span>
+                      <ResultStatusChip status={r.latest.result.status} />
+                    </td>
+                    <td className="table-cell font-mono text-xs">
+                      {r.latest.result.status === "Potential discrepancy"
+                        ? formatINR(r.latest.result.differencePaise!)
+                        : ""}
                     </td>
                     <td className="table-cell">
-                      <ResultStatusChip status={result.status} />
-                    </td>
-                    <td className="table-cell tabular font-mono text-xs">
-                      {result.status === "Potential discrepancy" &&
-                      result.differencePaise !== null ? (
-                        <span className="text-danger">{formatINR(result.differencePaise)}</span>
-                      ) : (
-                        "Not determined"
-                      )}
-                    </td>
-                    <td className="table-cell">
-                      <FindingStatusChip status={f.status} />
+                      <InvestigationStatusChip status={r.status} />
                     </td>
                   </tr>
                 ))}
@@ -227,222 +194,213 @@ function InvestigationsPage() {
           </div>
         )}
       </section>
-      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-3xl">
-          {selected &&
-            (() => {
-              const finding = state.findings.find((f) => f.id === selected);
-              return finding ? (
-                <InvestigationDetail
-                  finding={finding}
-                  result={evaluate(finding.line)}
-                  onClose={() => setSelected(null)}
-                />
-              ) : null;
-            })()}
+
+      <Sheet open={!!current} onOpenChange={(open) => !open && setSelected(null)}>
+        <SheetContent className="w-full gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          {current && <InvestigationDetail key={current.investigation.id} row={current} />}
         </SheetContent>
       </Sheet>
     </div>
   );
 }
 
-function InvestigationDetail({
-  finding: f,
-  result,
-  onClose,
-}: {
-  finding: Finding;
-  result: PriceResult;
-  onClose: () => void;
-}) {
-  const { confirmFinding, dismissFinding, supplyFact, escalateConflict } = useDemo();
-  const [dismissing, setDismissing] = useState(false);
-  const [reason, setReason] = useState("");
-  const active = f.status === "Open";
+function InvestigationDetail({ row }: { row: InvestigationRow }) {
+  const { investigation: inv, assessment: a, latest, kind, status } = row;
+  const result = latest.result;
   return (
-    <div>
-      <SheetHeader className="border-b p-5 pr-12 text-left">
+    <div className="flex h-full min-h-0 flex-col">
+      <SheetHeader className="shrink-0 border-b p-5 pr-12 text-left">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs text-muted-foreground">{f.id}</span>
-          <FindingStatusChip status={f.status} />
-          {f.fixtureId && (
-            <span className="text-xs text-muted-foreground">Example {f.fixtureId}</span>
-          )}
+          <span className="font-mono text-xs text-muted-foreground">
+            {inv.id} · {a.id}
+          </span>
+          <Chip>{kind}</Chip>
+          <InvestigationStatusChip status={status} />
         </div>
-        <SheetTitle className="text-xl font-semibold">Invoice pricing investigation</SheetTitle>
-        <SheetDescription>
-          BrightHire Staffing · Raised {formatTimestamp(f.createdAt)}
+        <SheetTitle className="text-lg font-semibold">
+          Version {latest.n}: {result.status}
+        </SheetTitle>
+        <SheetDescription className="text-xs">
+          {inv.origin} by {inv.createdBy}, {formatTimestamp(inv.createdAt)}. No payment is blocked
+          and nothing is sent to the supplier.
         </SheetDescription>
       </SheetHeader>
-      <div className="space-y-5 p-5">
-        <section className="rounded-md border bg-muted/30 p-4">
-          <p className="eyebrow mb-2">Supplier and invoice details</p>
-          <LineSummary line={f.line} />
-        </section>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         <section>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Current contractual assessment</h3>
-            <ResultStatusChip status={result.status} />
+          <LineSummary line={latest.inputs.line} />
+          <div className="mt-3">
+            <ResultBody result={result} line={latest.inputs.line} compact />
           </div>
-          <ResultBody result={result} compact />
         </section>
-        <section className="rounded-md border p-4">
-          <h3 className="mb-3 text-sm font-semibold">Available actions</h3>
-          {f.status === "Confirmed" && (
-            <p className="text-sm">
-              Confirmed discrepancy of{" "}
-              <span className="font-mono">{formatINR(f.confirmedPaise ?? 0)}</span>. Recovery is not
-              tracked.
-            </p>
-          )}
-          {f.status === "Dismissed" && (
-            <p className="text-sm text-muted-foreground">Dismissed. No further action.</p>
-          )}
-          {f.status === "Cleared" && (
-            <p className="text-sm text-muted-foreground">
-              Cleared: the recalculated line matches the contract.
-            </p>
-          )}
-          {f.status === "With Legal" && (
-            <p className="text-sm">
-              Waiting for a Legal decision.{" "}
-              <Link to="/legal" className="text-primary hover:underline">
-                Open Legal Reviews
-              </Link>
-            </p>
-          )}
-          {active && (
-            <RoleGate role="procurement" action="Deciding an investigation">
-              <div className="space-y-3">
-                {result.status === "Potential discrepancy" && (
-                  <Button
-                    onClick={() => {
-                      confirmFinding(f.id);
-                      toast.success(`${f.id} confirmed`);
-                    }}
-                  >
-                    Confirm discrepancy of {formatINR(result.differencePaise!)}
-                  </Button>
-                )}
-                {result.need?.kind === "location" && (
-                  <div>
-                    <p className="mb-2 text-sm">Supply the delivery center:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {LOCATIONS.map((l) => (
-                        <Button
-                          key={l}
-                          size="sm"
-                          variant="outline"
-                          onClick={() => supplyFact(f.id, { location: l })}
-                        >
-                          {l}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {result.need?.kind === "grade" && (
-                  <div>
-                    <p className="mb-2 text-sm">
-                      Confirm the Schedule A grade for "{f.line.grade}":
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {(["L4", "L3", "L2"] as Grade[]).map((g) => (
-                        <Button
-                          key={g}
-                          size="sm"
-                          variant="outline"
-                          onClick={() => supplyFact(f.id, { grade: g })}
-                        >
-                          {g}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {result.need?.kind === "split" && (
-                  <p className="text-sm text-muted-foreground">
-                    Ask Finance to resubmit this line as two lines split at the effective date, then
-                    dismiss this one.
-                  </p>
-                )}
-                {result.status === "Awaiting verification" && (
-                  <p className="text-sm text-muted-foreground">
-                    The governing term needs verification first.{" "}
-                    <Link
-                      to="/price-book"
-                      {...(result.governingTermId ? { hash: result.governingTermId } : {})}
-                      className="text-primary hover:underline"
-                    >
-                      Open in Price Book
-                    </Link>
-                  </p>
-                )}
-                {result.status === "Needs Legal" && result.conflictId && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      escalateConflict(result.conflictId!, f.id);
-                      toast.success(`${f.id} escalated to Legal`);
-                    }}
-                  >
-                    Escalate to Legal
-                  </Button>
-                )}
-                {!dismissing ? (
-                  <Button variant="ghost" size="sm" onClick={() => setDismissing(true)}>
-                    Dismiss investigation
-                  </Button>
-                ) : (
-                  <div className="space-y-2 border-t pt-3">
-                    <Textarea
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      placeholder="Reason for dismissing"
-                      rows={2}
-                      maxLength={300}
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={reason.trim().length < 3}
-                        onClick={() => {
-                          dismissFinding(f.id, reason);
-                          setDismissing(false);
-                        }}
-                      >
-                        Dismiss investigation
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDismissing(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </RoleGate>
-          )}
-        </section>
+        <NextStep row={row} />
         <section>
-          <h3 className="mb-3 text-sm font-semibold">Review history</h3>
+          <h3 className="eyebrow mb-2">Decisions (append-only)</h3>
+          {inv.decisions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No decisions yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {inv.decisions.map((d, i) => (
+                <li key={i} className="rounded-md border p-2.5 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Chip tone={d.kind === "Confirmed" ? "danger" : "neutral"}>{d.kind}</Chip>
+                    <span className="font-mono text-xs">version {d.version}</span>
+                    {d.amountPaise !== null && (
+                      <span className="font-mono text-xs">{formatINR(d.amountPaise)}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {d.by}, {formatTimestamp(d.at)}
+                    </span>
+                  </div>
+                  <p className="mt-1">Reason: {d.reason}</p>
+                  {d.version < latest.n && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Applied to version {d.version}, since reassessed.
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <VersionHistory assessment={a} />
+        <section>
+          <h3 className="eyebrow mb-2">Timeline</h3>
           <ol className="space-y-3 border-l pl-4">
-            {f.timeline.map((event, i) => (
+            {inv.timeline.map((e, i) => (
               <li key={i} className="text-sm">
                 <p>
-                  <span className="font-medium">{event.by}</span>: {event.text}
+                  <span className="font-medium">{e.by}</span>: {timelineText(inv, a, e)}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{formatTimestamp(event.at)}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{formatTimestamp(e.at)}</p>
               </li>
             ))}
           </ol>
         </section>
       </div>
-      <div className="sticky bottom-0 flex justify-end border-t bg-card p-4">
-        <Button variant="outline" onClick={onClose}>
-          Close investigation
-        </Button>
-      </div>
     </div>
   );
+}
+
+/** What Procurement can do next, depending on the latest version. */
+function NextStep({ row }: { row: InvestigationRow }) {
+  const { supplyFact, decide } = useDemo();
+  const { investigation: inv, assessment: a, latest, status } = row;
+  const result = latest.result;
+  const supplierId = latest.inputs.line.supplierId ?? DEFAULT_SUPPLIER_ID;
+  const centers = supplierById(supplierId)?.deliveryCenters ?? [];
+  const roles = ROLE_MAPS[supplierId] ?? [];
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
+  const needKind = result.need?.kind;
+
+  if (result.status === "Needs information" && (needKind === "location" || needKind === "grade")) {
+    const options = needKind === "location" ? centers : roles.map((r) => r.grade);
+    return (
+      <section className="space-y-3 rounded-md border p-4">
+        <h3 className="text-sm font-semibold">Supply the missing fact</h3>
+        <p className="text-xs text-muted-foreground">{result.need!.question}</p>
+        <select
+          className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        >
+          <option value="">Choose</option>
+          {options.map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional source note, for example timesheet reference"
+          maxLength={200}
+        />
+        <RoleGate role="procurement" action="Supplying a fact">
+          <Button
+            size="sm"
+            disabled={!value}
+            onClick={() => {
+              if (supplyFact(a.id, { kind: needKind, value, note }))
+                toast.success(`Recorded. ${a.id} recomputed as a new version.`);
+            }}
+          >
+            Record and recompute
+          </Button>
+        </RoleGate>
+      </section>
+    );
+  }
+
+  if (result.status === "Awaiting verification" || result.status === "Needs Legal") {
+    const ids = [...new Set((result.blockers ?? []).flatMap((b) => b.termIds))];
+    return (
+      <section className="rounded-md border p-4 text-sm">
+        <h3 className="mb-1 font-semibold">Waiting on {result.blockers?.[0]?.owner}</h3>
+        <p className="text-xs text-muted-foreground">{result.blockers?.[0]?.reason}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {result.status === "Needs Legal" && result.conflictId ? (
+            <Link
+              to="/legal/$conflictId"
+              params={{ conflictId: result.conflictId }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Open conflict {result.conflictId}
+            </Link>
+          ) : (
+            ids.map((id) => (
+              <Link
+                key={id}
+                to="/price-book"
+                search={termById(id)?.kind === "rate" ? {} : { tab: "clauses" }}
+                hash={id}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Review {id}
+              </Link>
+            ))
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  if (result.status === "Potential discrepancy" && (status === "Open" || status === "Reopened")) {
+    return (
+      <section className="space-y-3 rounded-md border p-4">
+        <h3 className="text-sm font-semibold">Decision on version {latest.n}</h3>
+        <p className="text-xs text-muted-foreground">
+          Potential excess {formatINR(result.differencePaise!)}. A decision is recorded against this
+          version and is never edited.
+        </p>
+        <Textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={2}
+          maxLength={300}
+          placeholder="Reason"
+        />
+        <RoleGate role="procurement" action="Recording a decision">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={!reason.trim()}
+              onClick={() => decide(inv.id, "Confirmed", reason) && toast.success("Confirmed")}
+            >
+              Confirm
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!reason.trim()}
+              onClick={() => decide(inv.id, "Dismissed", reason) && toast.success("Dismissed")}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </RoleGate>
+      </section>
+    );
+  }
+  return null;
 }

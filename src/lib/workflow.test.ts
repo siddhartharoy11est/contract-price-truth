@@ -24,10 +24,10 @@ describe("override link confirmation", () => {
     let ws = wf.seedWorkflow();
     const { state, assessmentId } = wf.saveCheck(ws, dev, line("S01"), "S01");
     ws = wf.verifyTerm(state, priya, "T02", "Quote checked");
-    expect(ws.terms.T02!.override).toEqual({ target: "T01", confirmed: false });
+    expect(ws.terms["T02"]!.override).toEqual({ target: "T01", confirmed: false });
     expect(latest(ws, assessmentId).result.status).toBe("Awaiting verification");
     ws = wf.confirmOverride(ws, priya, "T02");
-    expect(ws.terms.T02!.override).toMatchObject({
+    expect(ws.terms["T02"]!.override).toMatchObject({
       target: "T01",
       confirmed: true,
       by: "Priya Nair",
@@ -40,10 +40,10 @@ describe("override link confirmation", () => {
   it("changing the override target resets confirmation and returns a Verified term to Needs review", () => {
     let ws = vr();
     ws = wf.setOverride(ws, priya, "T02", null, "Wrong link");
-    expect(ws.terms.T02!.override).toBeNull();
-    expect(ws.terms.T02!.status).toBe("Needs review");
+    expect(ws.terms["T02"]!.override).toBeNull();
+    expect(ws.terms["T02"]!.status).toBe("Needs review");
     ws = wf.setOverride(ws, priya, "T02", "T01", "Restore");
-    expect(ws.terms.T02!.override).toEqual({ target: "T01", confirmed: false });
+    expect(ws.terms["T02"]!.override).toEqual({ target: "T01", confirmed: false });
   });
 
   it("unsigned draft terms cannot be verified", () => {
@@ -67,7 +67,7 @@ describe("assessment versions", () => {
     ]);
     expect(JSON.stringify(a.versions[0])).toBe(v1);
     expect(Object.isFrozen(a.versions[0])).toBe(true);
-    expect(a.versions[1]!.inputs.terms.T02).toEqual({
+    expect(a.versions[1]!.inputs.terms["T02"]).toEqual({
       status: "Verified",
       ratePaise: 105000,
       override: "T01",
@@ -78,7 +78,7 @@ describe("assessment versions", () => {
       sourceQuote: "reduced from ₹1,200 to ₹1,050",
       reason: "Test edit",
     });
-    expect(ws.terms.T02!.status).toBe("Needs review");
+    expect(ws.terms["T02"]!.status).toBe("Needs review");
     const after = ws.assessments.find((x) => x.id === id)!;
     expect(after.versions).toHaveLength(3);
     expect(after.versions[2]!.result.status).toBe("Awaiting verification");
@@ -107,7 +107,7 @@ describe("assessment versions", () => {
       sourceQuote: "All other rates in Schedule A remain unchanged.",
       reason: "x",
     });
-    const c = ws.terms.T02!.corrections![0]!;
+    const c = ws.terms["T02"]!.corrections![0]!;
     expect(c).toMatchObject({ aiOriginal: 105000, from: 105000, to: 100000, supported: false });
     expect(wf.canVerify(ws, "T02").ok).toBe(false);
     ws = wf.correctField(ws, priya, "T02", "ratePaise", 105000, {
@@ -152,7 +152,7 @@ describe("investigations", () => {
       sourceQuote: "QA Analyst (Grade L2): ₹520 per hour.",
       reason: "test",
     });
-    ws = { ...ws, terms: { ...ws.terms, T05: { ...ws.terms.T05!, status: "Verified" } } };
+    ws = { ...ws, terms: { ...ws.terms, T05: { ...ws.terms["T05"]!, status: "Verified" } } };
     ws = wf.recompute(ws, priya, "test");
     const inv = ws.investigations[0]!;
     const asmt = ws.assessments[0]!;
@@ -215,13 +215,13 @@ describe("Legal ruling", () => {
     let ws = vr();
     expect(() => wf.recordRuling(ws, anika, "C1", "A", "Too early")).toThrow("With Legal");
     ws = wf.reviewClause(ws, priya, "T07", "Disputed", "Fixed or adjustable?");
-    expect(ws.conflictCases.C1!.status).toBe("With Legal");
+    expect(ws.conflictCases["C1"]!.status).toBe("With Legal");
     const before = Object.fromEntries(Object.entries(ws.terms).map(([k, v]) => [k, v.status]));
     ws = wf.recordRuling(ws, anika, "C1", "B", "4.3 operates");
     const after = Object.fromEntries(Object.entries(ws.terms).map(([k, v]) => [k, v.status]));
     expect(after).toEqual(before);
-    expect(ws.terms.T06!.status).toBe("Needs review");
-    expect(ws.conflictCases.C1!.status).toBe("Ruled");
+    expect(ws.terms["T06"]!.status).toBe("Needs review");
+    expect(ws.conflictCases["C1"]!.status).toBe("Ruled");
     expect(() => wf.recordRuling(ws, anika, "C1", "A", "Again")).toThrow("cannot be changed");
   });
 
