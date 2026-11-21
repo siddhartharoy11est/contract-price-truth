@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Check, CircleCheck, Compass, List, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,10 @@ import { useDemo } from "@/lib/demo-store";
 import {
   BADGE_LABEL,
   PERSONA_CHIP,
+  TOUR_RESET_EVENT,
   TOUR_STEPS,
   readTour,
+  shouldAutoOpen,
   writeTour,
   type TourRoute,
 } from "@/lib/tour";
@@ -16,6 +18,8 @@ import { cn } from "@/lib/utils";
 
 /** How long the launcher pulses after the page loads, in milliseconds. */
 const PULSE_MS = 10_000;
+/** Delay before the tour opens by itself on a first visit, in milliseconds. */
+const AUTO_OPEN_MS = 1_000;
 /** Pause before an action so the visitor sees the page, and after so they see the result. */
 const BEFORE_MS = 600;
 const AFTER_MS = 400;
@@ -61,19 +65,53 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [pulse, setPulse] = useState(false);
-  const autoChecked = useRef(false);
+  const [armed, setArmed] = useState(0);
+  const pulsed = useRef(false);
+  /** Set once the tour opened by itself, so it opens at most once per page load. */
+  const autoOpened = useRef(false);
+  /** True while Start tour resets the demo, so that reset does not reopen the welcome step. */
+  const starting = useRef(false);
   const runId = useRef(0);
   const roleRef = useRef(state.role);
   roleRef.current = state.role;
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const pathRef = useRef(pathname);
+  pathRef.current = pathname;
 
   useEffect(() => {
-    if (!hydrated || !state.accountSelected || autoChecked.current) return;
-    autoChecked.current = true;
+    if (!hydrated || pulsed.current) return;
+    pulsed.current = true;
     setPulse(true);
     const t = window.setTimeout(() => setPulse(false), PULSE_MS);
-    if (readTour() === null) setOpen(true);
     return () => window.clearTimeout(t);
-  }, [hydrated, state.accountSelected]);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !shouldAutoOpen(pathname, autoOpened.current)) return;
+    const t = window.setTimeout(() => {
+      if (!shouldAutoOpen(pathRef.current, autoOpened.current)) return;
+      autoOpened.current = true;
+      runId.current++;
+      setStep(0);
+      setShowAll(false);
+      setResult(null);
+      setBusy(false);
+      setOpen(true);
+    }, AUTO_OPEN_MS);
+    return () => window.clearTimeout(t);
+  }, [hydrated, pathname, armed]);
+
+  useEffect(() => {
+    const onReset = () => {
+      if (starting.current) return;
+      autoOpened.current = false;
+      runId.current++;
+      setOpen(false);
+      setArmed((n) => n + 1);
+    };
+    window.addEventListener(TOUR_RESET_EVENT, onReset);
+    return () => window.removeEventListener(TOUR_RESET_EVENT, onReset);
+  }, []);
 
   const go = useCallback(
     (r: TourRoute, replace = false) =>
@@ -127,8 +165,21 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setShowAll(false);
   }, []);
 
+  /** X, Escape and Skip: minimise and remember, so the tour never opens by itself again. */
+  const close = useCallback(() => {
+    autoOpened.current = true;
+    if (readTour() === null) writeTour("skipped");
+    minimise();
+  }, [minimise]);
+
   const start = () => {
-    reset();
+    autoOpened.current = true;
+    starting.current = true;
+    try {
+      reset();
+    } finally {
+      starting.current = false;
+    }
     selectAccount("procurement");
     writeTour("started");
     void play(1);
@@ -136,7 +187,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
 
   const skip = () => {
     writeTour("skipped");
-    minimise();
+    close();
   };
 
   const finish = () => {
@@ -147,11 +198,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") minimise();
+      if (e.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, minimise]);
+  }, [open, close]);
 
   return (
     <>
@@ -167,12 +218,16 @@ export function TourProvider({ children }: { children: ReactNode }) {
           start={start}
           skip={skip}
           finish={finish}
-          minimise={minimise}
+          minimise={close}
         />
       )}
       <button
         type="button"
-        onClick={() => (open ? minimise() : setOpen(true))}
+        onClick={() => {
+          autoOpened.current = true;
+          if (open) close();
+          else setOpen(true);
+        }}
         aria-label="Guided tour"
         aria-expanded={open}
         title="Guided tour"

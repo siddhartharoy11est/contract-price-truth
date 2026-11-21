@@ -418,7 +418,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     void navigate({ to: "/documents", search: q ? { q } : {} });
   };
 
-  if (hydrated && !state.accountSelected) return <AccountSelection />;
+  if (hydrated && !state.accountSelected)
+    return (
+      <TourProvider>
+        <AccountSelection />
+      </TourProvider>
+    );
 
   return (
     <TourProvider>

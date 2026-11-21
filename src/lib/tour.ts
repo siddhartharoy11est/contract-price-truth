@@ -246,6 +246,27 @@ export function clearTour(s?: StorageLike | null): void {
   }
 }
 
+/** Fired on window by Reset demo, after the tour memory is cleared. */
+export const TOUR_RESET_EVENT = "contract-price-truth:tour-reset";
+
+/** Pages where the tour never opens by itself. */
+const NO_AUTO_OPEN: string[] = ["/tests"];
+
+/**
+ * Whether the tour should open by itself: only if it has not opened in this page load, the page
+ * allows it, and the visitor never started or closed it. Never throws.
+ */
+export function shouldAutoOpen(
+  pathname: string,
+  openedThisLoad: boolean,
+  s?: StorageLike | null,
+): boolean {
+  if (openedThisLoad) return false;
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (NO_AUTO_OPEN.some((p) => path === p || path.startsWith(`${p}/`))) return false;
+  return readTour(s) === null;
+}
+
 // ---------- actions ----------
 
 /** Step 3: verifies T02 and confirms its override link, through the normal workflow rules. */

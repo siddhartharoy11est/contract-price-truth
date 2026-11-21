@@ -19,7 +19,14 @@ import { evaluateLine, type EngineContext, type PriceResult } from "./pricing-en
 import type { EditableField, FieldValue } from "./term-state";
 import * as wf from "./workflow";
 import type { LiveReadOutcome } from "./live-read";
-import { clearTour, runTourAction, TOUR_ACTIONS, type TourActionId, type TourRoute } from "./tour";
+import {
+  clearTour,
+  runTourAction,
+  TOUR_RESET_EVENT,
+  TOUR_ACTIONS,
+  type TourActionId,
+  type TourRoute,
+} from "./tour";
 
 /** v2 re-seeds. Data saved under v1 is not migrated. */
 const STORAGE_KEY = "contract-price-truth:v2";
@@ -236,6 +243,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       // Storage blocked. The in-memory state still resets.
     }
     clearTour();
+    try {
+      window.dispatchEvent(new Event(TOUR_RESET_EVENT));
+    } catch {
+      // No window. Nothing listens.
+    }
     setState(defaultState());
   }, [setState]);
 

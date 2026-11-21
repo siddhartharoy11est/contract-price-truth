@@ -15,6 +15,7 @@ import {
   TOUR_STEPS,
   clearTour,
   readTour,
+  shouldAutoOpen,
   tourDisputeT06,
   tourVerifyT02,
   writeTour,
@@ -283,5 +284,52 @@ describe("tour actions on the real workflow", () => {
     const later = playStep(out.state, 3).state;
     const s01 = later.assessments.find((a) => a.fixtureId === "S01")!;
     expect(s01.versions.at(-1)!.result.status).toBe("Potential discrepancy");
+  });
+});
+
+describe("tour auto open", () => {
+  const memory = () => {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  };
+  const throwing = {
+    getItem: () => {
+      throw new Error("blocked");
+    },
+    setItem: () => {
+      throw new Error("blocked");
+    },
+    removeItem: () => {
+      throw new Error("blocked");
+    },
+  };
+
+  it("opens on a first visit, on any page but /tests", () => {
+    const mem = memory();
+    for (const p of ["/", "/about", "/findings", "/documents", "/invoice-check", "/legal/C1"])
+      expect(shouldAutoOpen(p, false, mem)).toBe(true);
+    expect(shouldAutoOpen("/tests", false, mem)).toBe(false);
+    expect(shouldAutoOpen("/tests/", false, mem)).toBe(false);
+  });
+
+  it("stays closed after close or start, and reopens after Reset demo", () => {
+    const mem = memory();
+    writeTour("skipped", mem);
+    expect(shouldAutoOpen("/", false, mem)).toBe(false);
+    writeTour("started", mem);
+    expect(shouldAutoOpen("/", false, mem)).toBe(false);
+    clearTour(mem);
+    expect(shouldAutoOpen("/", false, mem)).toBe(true);
+  });
+
+  it("opens at most once per page load when storage throws", () => {
+    expect(() => shouldAutoOpen("/", false, throwing)).not.toThrow();
+    expect(shouldAutoOpen("/", false, throwing)).toBe(true);
+    expect(shouldAutoOpen("/", true, throwing)).toBe(false);
+    expect(shouldAutoOpen("/", false, null)).toBe(true);
   });
 });
