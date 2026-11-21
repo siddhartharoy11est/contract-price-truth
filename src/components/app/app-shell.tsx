@@ -43,7 +43,7 @@ import type { RoleId } from "@/data/types";
 import { useDemo, useDerived } from "@/lib/demo-store";
 import { cn } from "@/lib/utils";
 import { isDark, toggleTheme } from "@/lib/theme";
-import { TourButton, TourProvider } from "./guided-demo";
+import { TourProvider } from "./guided-demo";
 
 type NavPath =
   | "/"
@@ -485,7 +485,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-label="Search contracts and suppliers"
               />
             </form>
-            <TourButton />
             <Button
               variant="outline"
               size="sm"
@@ -562,7 +561,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             )}
           </main>
-          <footer className="border-t px-4 py-3 text-[11px] text-muted-foreground sm:px-6 lg:px-8">
+          <footer className="border-t px-4 pb-20 pt-3 text-[11px] text-muted-foreground sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-[1600px] flex-wrap gap-x-4 gap-y-1">
               <span>
                 All data is synthetic. Brightwave Group and BrightHire Staffing are fictional.

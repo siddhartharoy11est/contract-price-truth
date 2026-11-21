@@ -19,7 +19,7 @@ import { evaluateLine, type EngineContext, type PriceResult } from "./pricing-en
 import type { EditableField, FieldValue } from "./term-state";
 import * as wf from "./workflow";
 import type { LiveReadOutcome } from "./live-read";
-import { clearTour, TOUR_ACTIONS } from "./tour";
+import { clearTour, runTourAction, TOUR_ACTIONS, type TourActionId, type TourRoute } from "./tour";
 
 /** v2 re-seeds. Data saved under v1 is not migrated. */
 const STORAGE_KEY = "contract-price-truth:v2";
@@ -88,8 +88,11 @@ interface Store {
   recordExtraction: (docId: string, res: ExtractResponse) => string | null;
   markProgress: (key: keyof DemoState["progress"]) => void;
   setGuideDismissed: (v: boolean) => void;
-  /** Guided tour steps 3 and 4: real workflow transitions, recorded as the given persona. */
-  tourAction: (kind: keyof typeof TOUR_ACTIONS, persona: RoleId) => boolean;
+  /**
+   * Guided tour: plays one real workflow transition, recorded as the action's persona.
+   * Returns the result line, or null when the state did not allow it. Never throws.
+   */
+  tourRun: (id: TourActionId) => { done: string | null; nav?: TourRoute };
   reset: () => void;
 }
 
@@ -285,9 +288,12 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       }),
     markProgress,
     setGuideDismissed,
-    tourAction: (kind, persona) => {
-      if (stateRef.current.role !== persona) setRole(persona);
-      return runOk((s, a) => TOUR_ACTIONS[kind](s, a));
+    tourRun: (id) => {
+      const r = roleById(TOUR_ACTIONS[id].actor);
+      const s = stateRef.current;
+      const out = runTourAction(s, id, { by: r.name, role: r.id, at: now() });
+      if (out.state !== s) setState({ ...s, ...out.state });
+      return { done: out.done, ...(out.nav ? { nav: out.nav } : {}) };
     },
     reset,
   };

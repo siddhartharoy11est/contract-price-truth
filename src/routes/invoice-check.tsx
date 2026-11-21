@@ -22,11 +22,15 @@ import { DEFAULT_SUPPLIER_ID } from "@/lib/pricing-engine";
 interface InvoiceCheckSearch {
   /** A fixture id the guided tour asks the form to load. Fills the form only. */
   example?: string;
+  /** A saved check the guided tour opens after pressing Check, with its line in the form. */
+  open?: string;
 }
 
 export const Route = createFileRoute("/invoice-check")({
-  validateSearch: (search: Record<string, unknown>): InvoiceCheckSearch =>
-    typeof search["example"] === "string" ? { example: search["example"] } : {},
+  validateSearch: (search: Record<string, unknown>): InvoiceCheckSearch => ({
+    ...(typeof search["example"] === "string" ? { example: search["example"] } : {}),
+    ...(typeof search["open"] === "string" ? { open: search["open"] } : {}),
+  }),
   head: () => ({
     meta: [
       { title: "Invoice Check · Contract Price Truth" },
@@ -171,13 +175,19 @@ function InvoiceCheckPage() {
     if (result.status === "Potential discrepancy") markProgress("s01Excess");
   }, [assessment, result, markProgress]);
 
-  const { example } = Route.useSearch();
+  const { example, open } = Route.useSearch();
   const navigate = useNavigate();
   useEffect(() => {
     if (!example) return;
     loadExample(example);
     void navigate({ to: "/invoice-check", search: {}, replace: true });
   }, [example]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const a = open ? state.assessments.find((x) => x.id === open) : undefined;
+    if (!a) return;
+    openSaved(a);
+    void navigate({ to: "/invoice-check", search: {}, replace: true });
+  }, [open, state.assessments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<FormState>) => {
     setForm((f) => ({ ...f, ...patch }));

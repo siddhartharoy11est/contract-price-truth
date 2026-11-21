@@ -8,11 +8,11 @@ import * as wf from "./workflow";
 import {
   TOUR_KEY,
   TOUR_NOTE,
+  TOUR_ACTIONS,
   TOUR_QUESTION,
   TOUR_STEPS,
   clearTour,
   readTour,
-  stepLinks,
   tourDisputeT06,
   tourVerifyT02,
   writeTour,
@@ -31,7 +31,6 @@ describe("tour script", () => {
       expect(s.title.trim()).not.toBe("");
       expect(s.body.length).toBeGreaterThan(0);
       for (const p of [...s.body, ...(s.notes ?? []), s.why ?? "x"]) expect(p.trim()).not.toBe("");
-      for (const l of stepLinks(s)) expect(l.label.trim()).not.toBe("");
     }
   });
 
@@ -40,9 +39,9 @@ describe("tour script", () => {
     expect(text).not.toMatch(/[–—]| - /);
   });
 
-  it("links only to routes that exist", () => {
+  it("routes only to pages that exist", () => {
     const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
-    const paths = new Set(TOUR_STEPS.flatMap((s) => stepLinks(s).map((l) => l.to)));
+    const paths = new Set(TOUR_STEPS.flatMap((s) => (s.route ? [s.route.to] : [])));
     expect(paths.size).toBeGreaterThan(5);
     for (const p of paths) {
       const last = router.matchRoutes(p).at(-1);
@@ -50,20 +49,61 @@ describe("tour script", () => {
     }
   });
 
-  it("names a valid persona wherever a step or link switches account", () => {
+  it("names a valid persona wherever a step or action switches account", () => {
     const ids = ROLES.map((r) => r.id);
-    for (const s of TOUR_STEPS) {
-      if (s.persona) expect(ids).toContain(s.persona);
-      for (const l of stepLinks(s)) if (l.role) expect(ids).toContain(l.role);
-    }
+    for (const s of TOUR_STEPS) if (s.persona) expect(ids).toContain(s.persona);
+    for (const a of Object.values(TOUR_ACTIONS)) expect(ids).toContain(a.actor);
     expect(TOUR_STEPS[5]!.persona).toBe("finance");
     expect(TOUR_STEPS[7]!.persona).toBe("legal");
     expect(TOUR_STEPS[8]!.persona).toBe("procurement");
   });
 
-  it("offers Do this step for me on steps 3 and 4 only", () => {
-    const withAction = TOUR_STEPS.flatMap((s, i) => (s.doForMe ? [i] : []));
-    expect(withAction).toEqual([3, 4]);
+  it("sets the route and persona the brief names for every step", () => {
+    expect(TOUR_STEPS.map((s) => s.route?.to ?? null)).toEqual([
+      null,
+      "/",
+      "/documents",
+      "/price-book",
+      "/price-book",
+      "/invoice-check",
+      "/invoice-check",
+      "/legal",
+      "/findings",
+      "/documents",
+      "/about",
+    ]);
+    const P = "procurement";
+    expect(TOUR_STEPS.map((s) => s.persona)).toEqual([
+      null,
+      P,
+      P,
+      P,
+      P,
+      "finance",
+      "finance",
+      "legal",
+      P,
+      P,
+      null,
+    ]);
+    expect(TOUR_STEPS[4]!.route?.search).toEqual({ tab: "clauses" });
+  });
+
+  it("plays actions on steps 3 to 6 and 8 only", () => {
+    const withAction = TOUR_STEPS.flatMap((s, i) => (s.actions?.length ? [i] : []));
+    expect(withAction).toEqual([3, 4, 5, 6, 8]);
+  });
+
+  it("keeps every step short: two paragraphs, at most three sentences", () => {
+    for (const s of TOUR_STEPS) {
+      expect(s.body.length).toBeLessThanOrEqual(2);
+      expect(
+        s.body
+          .join(" ")
+          .split(/[.!?](\s|$)/)
+          .filter((x) => x.trim()).length,
+      ).toBeLessThanOrEqual(3);
+    }
   });
 });
 
@@ -107,7 +147,7 @@ describe("tour storage", () => {
   });
 });
 
-describe("Do this step for me", () => {
+describe("tour actions", () => {
   it("step 3 verifies T02 and confirms its link as Priya, which makes S01 exact", () => {
     const saved = wf.saveCheck(wf.seedWorkflow(), dev, fixtureById("S01")!.line, "S01");
     const ws = tourVerifyT02(saved.state, priya);

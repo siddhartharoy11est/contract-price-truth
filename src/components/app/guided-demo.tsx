@@ -1,275 +1,284 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, Check, Compass, List, Moon, X } from "lucide-react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { ArrowLeft, ArrowRight, Check, CircleCheck, Compass, List, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { roleById } from "@/data/roles";
 import { useDemo } from "@/lib/demo-store";
-import { toggleTheme } from "@/lib/theme";
 import {
   BADGE_LABEL,
   PERSONA_CHIP,
   TOUR_STEPS,
   readTour,
   writeTour,
-  type TourBadge,
-  type TourLink,
+  type TourRoute,
 } from "@/lib/tour";
 import { cn } from "@/lib/utils";
 
-/** How long the soft pulse runs after load or after opening, in milliseconds. */
+/** How long the launcher pulses after the page loads, in milliseconds. */
 const PULSE_MS = 10_000;
+/** Pause before an action so the visitor sees the page, and after so they see the result. */
+const BEFORE_MS = 600;
+const AFTER_MS = 400;
 
-interface TourCtx {
-  open: boolean;
-  step: number;
-  /** Opens the tour at its first step. */
-  openTour: () => void;
-}
+const reducedMotion = () => {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+};
 
-const TourContext = createContext<TourCtx | null>(null);
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion() ? 0 : ms));
 
-function usePulse(active: boolean, key: unknown): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (!active) return setOn(false);
-    setOn(true);
-    const t = window.setTimeout(() => setOn(false), PULSE_MS);
-    return () => window.clearTimeout(t);
-  }, [active, key]);
-  return on;
-}
+/** Lets React commit and the browser paint the page the tour just opened. */
+const settle = () => new Promise<void>((resolve) => window.setTimeout(resolve, 60));
 
 /**
- * The guided tour. One story across the three personas, eleven steps. It replaces the earlier
- * "Try this path" checklist and drives the same store actions and account switch.
+ * The guided tour: a floating launcher and a compact docked panel. Next, Back and All steps
+ * switch the demo account, open the page and play the step's real workflow action.
  */
 export function TourProvider({ children }: { children: ReactNode }) {
-  const { hydrated, state } = useDemo();
+  const { hydrated, state, reset, selectAccount, setRole, tourRun } = useDemo();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
-  const [opened, setOpened] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [pulse, setPulse] = useState(false);
   const autoChecked = useRef(false);
+  const runId = useRef(0);
+  const roleRef = useRef(state.role);
+  roleRef.current = state.role;
 
   useEffect(() => {
     if (!hydrated || !state.accountSelected || autoChecked.current) return;
     autoChecked.current = true;
-    if (readTour() === null) {
-      setStep(0);
-      setOpen(true);
-      setOpened((n) => n + 1);
-    }
+    setPulse(true);
+    const t = window.setTimeout(() => setPulse(false), PULSE_MS);
+    if (readTour() === null) setOpen(true);
+    return () => window.clearTimeout(t);
   }, [hydrated, state.accountSelected]);
 
-  const openTour = useCallback(() => {
-    setStep(0);
-    setOpen(true);
-    setOpened((n) => n + 1);
-  }, []);
-
-  return (
-    <TourContext.Provider value={{ open, step, openTour }}>
-      {children}
-      {open && (
-        <TourPanel step={step} setStep={setStep} opened={opened} close={() => setOpen(false)} />
-      )}
-    </TourContext.Provider>
+  const go = useCallback(
+    (r: TourRoute, replace = false) =>
+      navigate({
+        to: r.to,
+        ...(r.search ? { search: r.search } : { search: {} }),
+        ...(r.hash ? { hash: r.hash } : {}),
+        replace,
+      } as unknown as Parameters<typeof navigate>[0]),
+    [navigate],
   );
-}
 
-function useTour(): TourCtx {
-  const t = useContext(TourContext);
-  if (!t) throw new Error("useTour must be used inside TourProvider");
-  return t;
-}
-
-/** Header button. Visible on every page, reopens the tour at its first step. */
-export function TourButton() {
-  const { openTour } = useTour();
-  const pulse = usePulse(true, 0);
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className={cn(
-        "h-9 shrink-0 gap-1.5 border-warning px-2.5 text-xs text-warning hover:bg-warning-soft hover:text-warning",
-        pulse && "tour-pulse",
-      )}
-      onClick={openTour}
-      aria-label="Open the guided tour"
-    >
-      <Compass className="size-3.5" />
-      <span className="hidden sm:inline">Tour</span>
-    </Button>
-  );
-}
-
-function Badge({ kind }: { kind: TourBadge }) {
-  return (
-    <span
-      className={cn(
-        "rounded border px-1.5 py-0.5 text-[10px] font-medium",
-        kind === "ai" && "border-info/30 bg-info-soft text-info",
-        kind === "rules" && "border-success/30 bg-success-soft text-success",
-        kind === "people" && "border-legal/30 bg-legal-soft text-legal",
-      )}
-    >
-      {BADGE_LABEL[kind]}
-    </span>
-  );
-}
-
-function TourPanel({
-  step,
-  setStep,
-  opened,
-  close,
-}: {
-  step: number;
-  setStep: (n: number) => void;
-  opened: number;
-  close: () => void;
-}) {
-  const { state, reset, selectAccount, setRole, tourAction } = useDemo();
-  const navigate = useNavigate();
-  const [showAll, setShowAll] = useState(false);
-  const [resetNotice, setResetNotice] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const pulse = usePulse(true, opened);
-  const s = TOUR_STEPS[step]!;
-  const last = step === TOUR_STEPS.length - 1;
-  const titleId = "tour-title";
-
-  const dismiss = useCallback(
-    (memory: "skipped" | "completed") => {
-      writeTour(memory);
-      close();
+  /** Shows step n and makes the app match it. A newer call cancels an older one. */
+  const play = useCallback(
+    async (n: number) => {
+      const id = ++runId.current;
+      const alive = () => runId.current === id;
+      const s = TOUR_STEPS[n]!;
+      setStep(n);
+      setShowAll(false);
+      setResult(null);
+      setBusy(Boolean(s.route));
+      try {
+        if (s.persona && roleRef.current !== s.persona) setRole(s.persona);
+        if (s.route) await go(s.route);
+        await settle();
+        let last: string | null = null;
+        for (const a of s.actions ?? []) {
+          await wait(BEFORE_MS);
+          if (!alive()) return;
+          const out = tourRun(a);
+          if (out.nav) await go(out.nav, true);
+          if (out.done) last = out.done;
+          await wait(AFTER_MS);
+          if (!alive()) return;
+        }
+        if (alive()) setResult(last);
+      } catch {
+        // Navigation interrupted. The step still shows.
+      } finally {
+        if (alive()) setBusy(false);
+      }
     },
-    [close],
+    [go, setRole, tourRun],
   );
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss("skipped");
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dismiss]);
-
-  const goTo = (n: number) => {
-    setStep(n);
-    setDone(null);
+  const minimise = useCallback(() => {
+    setOpen(false);
     setShowAll(false);
-  };
-
-  const follow = (link: TourLink, role = link.role) => {
-    if (role && state.role !== role) setRole(role);
-    void navigate({
-      to: link.to,
-      ...(link.search ? { search: link.search } : {}),
-      ...(link.hash ? { hash: link.hash } : {}),
-    } as unknown as Parameters<typeof navigate>[0]);
-  };
+  }, []);
 
   const start = () => {
     reset();
     selectAccount("procurement");
     writeTour("started");
-    setResetNotice(true);
-    goTo(1);
-    void navigate({ to: "/" });
+    void play(1);
   };
 
-  const actionDone =
-    s.doForMe === "verify-T02"
-      ? state.terms["T02"]?.status === "Verified" && state.terms["T02"]?.override?.confirmed
-      : s.doForMe === "dispute-T06"
-        ? state.terms["T06"]?.interpretation?.choice === "Disputed" &&
-          ["T07", "T08", "T09"].every((id) => state.terms[id]?.interpretation)
-        : false;
-
-  const doForMe = () => {
-    if (!s.doForMe || !s.persona) return;
-    if (tourAction(s.doForMe, s.persona)) {
-      setDone(
-        s.doForMe === "verify-T02"
-          ? "Done: T02 is Verified and its override link is confirmed, recorded as Priya Nair."
-          : "Done: T06 is Disputed and the question is with Legal. T07, T08 and T09 are reviewed as Clear. Recorded as Priya Nair.",
-      );
-      if (s.go) follow(s.go, s.persona);
-    }
+  const skip = () => {
+    writeTour("skipped");
+    minimise();
   };
 
-  const persona = s.persona ? roleById(s.persona) : null;
-  const needsSwitch = persona && state.role !== persona.id;
-  const mainClass = cn("bg-warning text-background hover:bg-warning/90", pulse && "tour-pulse");
+  const finish = () => {
+    writeTour("completed");
+    minimise();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") minimise();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, minimise]);
+
+  return (
+    <>
+      {children}
+      {open && (
+        <TourPanel
+          step={step}
+          busy={busy}
+          result={result}
+          showAll={showAll}
+          toggleAll={() => setShowAll((v) => !v)}
+          play={(n) => void play(n)}
+          start={start}
+          skip={skip}
+          finish={finish}
+          minimise={minimise}
+        />
+      )}
+      <button
+        type="button"
+        onClick={() => (open ? minimise() : setOpen(true))}
+        aria-label="Guided tour"
+        aria-expanded={open}
+        title="Guided tour"
+        className={cn(
+          "fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-40 flex size-12 items-center justify-center rounded-full border-2 border-warning bg-sidebar text-sidebar-foreground shadow-md transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          open && "max-sm:hidden",
+          pulse && "tour-pulse",
+        )}
+      >
+        <Compass className="size-5" />
+      </button>
+    </>
+  );
+}
+
+function TourPanel({
+  step,
+  busy,
+  result,
+  showAll,
+  toggleAll,
+  play,
+  start,
+  skip,
+  finish,
+  minimise,
+}: {
+  step: number;
+  busy: boolean;
+  result: string | null;
+  showAll: boolean;
+  toggleAll: () => void;
+  play: (n: number) => void;
+  start: () => void;
+  skip: () => void;
+  finish: () => void;
+  minimise: () => void;
+}) {
+  const s = TOUR_STEPS[step]!;
+  const total = TOUR_STEPS.length;
+  const last = step === total - 1;
+  const welcome = step === 0;
+  const primary = "bg-warning text-background hover:bg-warning/90";
 
   return (
     <section
       role="dialog"
       aria-modal="false"
-      aria-labelledby={titleId}
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[65vh] flex-col rounded-t-xl border-t-4 border-warning bg-card shadow-2xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-h-[min(36rem,calc(100vh-6rem))] sm:w-[24rem] sm:rounded-xl sm:border sm:border-l-4 sm:border-warning"
+      aria-labelledby="tour-title"
+      className={cn(
+        "surface fixed inset-x-0 bottom-0 z-40 flex max-h-[45vh] flex-col rounded-b-none pb-[env(safe-area-inset-bottom)] shadow-md",
+        "sm:inset-x-auto sm:bottom-[calc(5rem+env(safe-area-inset-bottom))] sm:right-4 sm:w-[360px] sm:rounded-b-lg sm:pb-0",
+      )}
     >
-      <div className="flex items-start gap-2 border-b px-4 pb-2.5 pt-3">
+      {!welcome && (
+        <div
+          className="h-1 shrink-0 overflow-hidden rounded-t-lg bg-muted"
+          role="progressbar"
+          aria-label="Tour progress"
+          aria-valuemin={1}
+          aria-valuemax={total}
+          aria-valuenow={step + 1}
+        >
+          <div
+            className="h-full bg-warning transition-[width]"
+            style={{ width: `${((step + 1) / total) * 100}%` }}
+          />
+        </div>
+      )}
+      <div className="flex items-start gap-2 px-4 pt-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-medium text-warning">
-              Step {step + 1} of {TOUR_STEPS.length}
-            </span>
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>{welcome ? "Guided tour" : `Step ${step + 1} of ${total}`}</span>
             {s.persona && (
-              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium">
                 {PERSONA_CHIP[s.persona]}
               </span>
             )}
           </div>
-          <h2 id={titleId} className="mt-1 text-base font-semibold leading-snug">
-            {s.title}
+          <h2 id="tour-title" className="mt-1 text-sm font-semibold leading-snug">
+            {showAll ? "All steps" : s.title}
           </h2>
         </div>
+        {!welcome && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            onClick={toggleAll}
+            aria-label="All steps"
+            aria-expanded={showAll}
+            title="All steps"
+          >
+            <List className="size-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0"
-          onClick={() => setShowAll((v) => !v)}
-          aria-label="All steps"
-          aria-expanded={showAll}
-          title="All steps"
-        >
-          <List className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          onClick={() => dismiss(last ? "completed" : "skipped")}
-          aria-label="Close the tour"
-          title="Close (Escape)"
+          className="size-7 shrink-0"
+          onClick={minimise}
+          aria-label="Minimise the tour"
+          title="Minimise (Escape)"
         >
           <X className="size-4" />
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2 text-sm">
         {showAll ? (
           <ol className="space-y-0.5" aria-label="All steps">
             {TOUR_STEPS.map((x, i) => (
               <li key={x.title}>
                 <button
-                  onClick={() => goTo(i)}
+                  onClick={() => play(i)}
+                  aria-current={i === step ? "step" : undefined}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
-                    i === step && "bg-warning-soft font-medium",
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted",
+                    i === step && "bg-muted font-medium",
                   )}
                 >
-                  <span className="w-5 shrink-0 font-mono text-muted-foreground">{i + 1}</span>
+                  <span className="w-5 shrink-0 tabular text-muted-foreground">{i + 1}</span>
                   <span className="flex-1">{x.title}</span>
                   {x.persona && (
                     <span className="text-[10px] text-muted-foreground">
@@ -282,19 +291,20 @@ function TourPanel({
           </ol>
         ) : (
           <>
-            {resetNotice && step === 1 && (
-              <p className="mb-2 rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
-                Demo data was reset to the seed, so every step works from a known state.
-              </p>
-            )}
             {s.badges && (
               <div className="mb-2 flex flex-wrap gap-1">
                 {s.badges.map((b) => (
-                  <Badge key={b} kind={b} />
+                  <span
+                    key={b}
+                    className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                  >
+                    <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+                    {BADGE_LABEL[b]}
+                  </span>
                 ))}
               </div>
             )}
-            <div className="space-y-2 leading-relaxed">
+            <div className="space-y-1.5 leading-relaxed">
               {s.body.map((p) => (
                 <p key={p}>{p}</p>
               ))}
@@ -304,113 +314,52 @@ function TourPanel({
                 {n}
               </p>
             ))}
-            {s.themeTip && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-1 h-7 gap-1.5 px-2 text-xs"
-                onClick={() => toggleTheme()}
-              >
-                <Moon className="size-3.5" />
-                Try dark theme
-              </Button>
-            )}
             {s.why && (
-              <p className="mt-3 border-l-2 border-warning/60 pl-2 text-xs text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">Why it matters: </span>
                 {s.why}
               </p>
             )}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {needsSwitch && (s.go ?? s.links?.[0]) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs"
-                  onClick={() => follow((s.go ?? s.links![0])!, persona.id)}
-                >
-                  Switch to {persona.name.split(" ")[0]}
-                </Button>
-              )}
-              {s.go && !needsSwitch && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs"
-                  onClick={() => follow(s.go!)}
-                >
-                  {s.go.label}
-                </Button>
-              )}
-              {s.links?.map((l) => (
-                <Button
-                  key={l.label}
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs"
-                  onClick={() => follow(l)}
-                >
-                  {l.label}
-                </Button>
-              ))}
-              {s.doForMe && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 border-warning/60 text-xs"
-                  disabled={Boolean(actionDone)}
-                  onClick={doForMe}
-                >
-                  {actionDone ? (
-                    <>
-                      <Check className="size-3.5" /> Already done
-                    </>
-                  ) : (
-                    "Do this step for me"
-                  )}
-                </Button>
-              )}
-            </div>
-            {done && <p className="mt-2 text-xs text-success">{done}</p>}
+            {(busy || result) && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs" aria-live="polite">
+                {busy ? (
+                  <span className="text-muted-foreground">Working…</span>
+                ) : (
+                  <>
+                    <CircleCheck className="size-3.5 shrink-0 text-success" aria-hidden />
+                    <span>{result}</span>
+                  </>
+                )}
+              </p>
+            )}
           </>
         )}
       </div>
 
       <div className="flex items-center gap-2 border-t px-4 py-2.5">
-        {step === 0 ? (
+        {welcome ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => dismiss("skipped")}>
+            <Button size="sm" variant="ghost" onClick={skip}>
               Skip
             </Button>
-            <Button size="sm" className={cn("ml-auto", mainClass)} onClick={start}>
+            <Button size="sm" className={cn("ml-auto", primary)} onClick={start}>
               Start tour
               <ArrowRight className="size-3.5" />
             </Button>
           </>
         ) : (
           <>
-            <Button size="sm" variant="ghost" onClick={() => goTo(step - 1)}>
+            <Button size="sm" variant="ghost" onClick={() => play(step - 1)}>
               <ArrowLeft className="size-3.5" />
               Back
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => dismiss(last ? "completed" : "skipped")}
-            >
-              Close
-            </Button>
             {last ? (
-              <Button
-                size="sm"
-                className={cn("ml-auto", mainClass)}
-                onClick={() => dismiss("completed")}
-              >
+              <Button size="sm" className={cn("ml-auto", primary)} onClick={finish}>
                 Finish
                 <Check className="size-3.5" />
               </Button>
             ) : (
-              <Button size="sm" className={cn("ml-auto", mainClass)} onClick={() => goTo(step + 1)}>
+              <Button size="sm" className={cn("ml-auto", primary)} onClick={() => play(step + 1)}>
                 Next
                 <ArrowRight className="size-3.5" />
               </Button>
