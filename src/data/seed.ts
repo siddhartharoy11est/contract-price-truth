@@ -1,12 +1,22 @@
-import type { Conflict, ContractDocument, Location, SeedTerm, Supplier } from "./types";
+import type { Conflict, ContractDocument, Location, RoleMapEntry, SeedTerm, Supplier } from "./types";
 
 /** All data below is synthetic. Brightwave Group and BrightHire Staffing are fictional. */
 
 export const BUYER = "Brightwave Group";
+export const DEMO_SUPPLIER_ID = "brighthire";
 export const LOCATIONS: Location[] = ["Bengaluru", "Pune", "Hyderabad"];
 
+/** Supplier-specific role maps. A role is matched only through this map, never inferred from a rate. */
+export const ROLE_MAPS: Record<string, RoleMapEntry[]> = {
+  brighthire: [
+    { grade: "L4", role: "Senior Software Engineer" },
+    { grade: "L3", role: "Software Engineer" },
+    { grade: "L2", role: "QA Analyst" },
+  ],
+};
+
 export const SUPPLIERS: Supplier[] = [
-  { id: "brighthire", name: "BrightHire Staffing", category: "IT staffing" },
+  { id: "brighthire", name: "BrightHire Staffing", category: "IT staffing", deliveryCenters: LOCATIONS },
   {
     id: "swiftfreight",
     name: "SwiftFreight Logistics",
@@ -56,7 +66,7 @@ export const DOCUMENTS: ContractDocument[] = [
       {
         id: "4.3",
         label: "4.3 Annual adjustment",
-        text: "On each anniversary of the Effective Date, Supplier may increase the hourly rates by up to the lesser of 3% or the annual change in CPI, if Supplier gives Customer at least 60 days' written notice.",
+        text: "On each anniversary of the Effective Date, Supplier may increase any rate in a Schedule by up to the lesser of 3% or the annual percentage change in the Consumer Price Index for the preceding calendar year, by giving Buyer at least 60 days' written notice.",
       },
       {
         id: "9.1",
@@ -65,8 +75,8 @@ export const DOCUMENTS: ContractDocument[] = [
       },
       {
         id: "11.2",
-        label: "11.2 Order of precedence",
-        text: "If documents conflict: (a) a signed Amendment prevails over this Agreement and any Schedule; (b) Schedule A prevails over the body of this Agreement on matters of pricing; (c) a later signed Amendment prevails over an earlier one.",
+        label: "11.2 Interpretation",
+        text: "The body of this Agreement and the Schedules form one agreement and are to be read together. Where they are inconsistent, the parties will give effect to the intention of the Agreement as a whole.",
       },
     ],
   },
@@ -88,7 +98,11 @@ export const DOCUMENTS: ContractDocument[] = [
         label: "Note 1",
         text: "Rates apply to resources delivered from any Supplier delivery center unless this Schedule states otherwise.",
       },
-      { id: "Note 2", label: "Note 2", text: "Rates are fixed for the Initial Term." },
+      {
+        id: "Note 2",
+        label: "Note 2",
+        text: "Rates are fixed for the Initial Term of this Agreement (1 April 2025 to 31 March 2027).",
+      },
     ],
   },
   {
@@ -227,10 +241,10 @@ export const TERMS: SeedTerm[] = [
   {
     id: "T06",
     kind: "clause",
-    title: "Fixed-rate clause",
+    title: "Fixed-rate note (Schedule A Note 2)",
     docId: "BH-SCH-A-2025",
     clauseId: "Note 2",
-    quote: "Rates are fixed for the Initial Term.",
+    quote: "Rates are fixed for the Initial Term of this Agreement (1 April 2025 to 31 March 2027).",
     grade: null,
     location: null,
     ratePaise: null,
@@ -245,21 +259,24 @@ export const TERMS: SeedTerm[] = [
     docId: "BH-MSA-2025",
     clauseId: "4.3",
     quote:
-      "Supplier may increase the hourly rates by up to the lesser of 3% or the annual change in CPI, if Supplier gives Customer at least 60 days' written notice",
+      "Supplier may increase any rate in a Schedule by up to the lesser of 3% or the annual percentage change in the Consumer Price Index for the preceding calendar year, by giving Buyer at least 60 days' written notice",
     grade: null,
     location: null,
     ratePaise: null,
     effectiveFrom: null,
+    capPct: 3,
+    noticeDaysRequired: 60,
     initialStatus: "Needs review",
     conflictId: "C1",
   },
   {
     id: "T08",
     kind: "clause",
-    title: "Precedence clause",
+    title: "Interpretation clause",
     docId: "BH-MSA-2025",
     clauseId: "11.2",
-    quote: "(b) Schedule A prevails over the body of this Agreement on matters of pricing",
+    quote:
+      "The body of this Agreement and the Schedules form one agreement and are to be read together. Where they are inconsistent, the parties will give effect to the intention of the Agreement as a whole.",
     grade: null,
     location: null,
     ratePaise: null,
@@ -311,16 +328,16 @@ export const CONFLICTS: Conflict[] = [
     readings: [
       {
         reading: "A",
-        summary: "Rates are fixed. No increase applies.",
+        summary: "Rates are fixed for the Initial Term. No increase applies.",
         detail:
-          "Schedule A Note 2 fixes rates for the Initial Term (24 months from 1 Apr 2025). MSA 11.2(b) says Schedule A prevails over the body of the Agreement on pricing, so it overrides the annual adjustment in MSA 4.3.",
+          "Schedule A Note 2 is the specific commercial term for the Initial Term (1 Apr 2025 to 31 Mar 2027). MSA 4.3 first operates on the anniversary after the Initial Term ends. L2 governs at ₹520 and the notice has no effect.",
         termIds: ["T06", "T08"],
       },
       {
         reading: "B",
-        summary: "The increase applies with 60 days' notice.",
+        summary: "The adjustment right operates during the Initial Term.",
         detail:
-          "MSA 4.3 allows an increase of up to the lesser of 3% or CPI on each anniversary with at least 60 days' written notice. The supplier gave notice on 15 Jan 2026 for 1 Apr 2026.",
+          "MSA 4.3 is the agreed mechanism by which fixed rates may move, and Note 2 means no change outside that mechanism. The notice of 15 Jan 2026 satisfies 4.3, so L2 governs at ₹533 from 1 Apr 2026.",
         termIds: ["T07", "T09"],
       },
     ],

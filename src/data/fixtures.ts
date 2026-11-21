@@ -26,13 +26,13 @@ export const FIXTURES: InvoiceFixture[] = [
   },
   {
     id: "S04",
-    summary: "31 Jul 2026 only, L4, Bengaluru, billed ₹1,200",
-    line: { ...base, grade: "L4", location: "Bengaluru", serviceStart: "2026-07-31", serviceEnd: "2026-07-31", hours: 100, billedRatePaise: 120000 },
+    summary: "1 to 31 Jul 2026, L4, Bengaluru, billed ₹1,200",
+    line: { ...base, grade: "L4", location: "Bengaluru", serviceStart: "2026-07-01", serviceEnd: "2026-07-31", hours: 100, billedRatePaise: 120000 },
   },
   {
     id: "S05",
-    summary: "1 Aug 2026 only, L4, Bengaluru, billed ₹1,200",
-    line: { ...base, grade: "L4", location: "Bengaluru", serviceStart: "2026-08-01", serviceEnd: "2026-08-01", hours: 100, billedRatePaise: 120000 },
+    summary: "1 to 31 Aug 2026, L4, Bengaluru, billed ₹1,200",
+    line: { ...base, grade: "L4", location: "Bengaluru", serviceStart: "2026-08-01", serviceEnd: "2026-08-31", hours: 100, billedRatePaise: 120000 },
   },
   {
     id: "S06",
@@ -63,6 +63,16 @@ export const FIXTURES: InvoiceFixture[] = [
     id: "S11",
     summary: "25 Jul to 8 Aug 2026, L4, Bengaluru, billed ₹1,200",
     line: { ...base, grade: "L4", location: "Bengaluru", serviceStart: "2026-07-25", serviceEnd: "2026-08-08", hours: 100, billedRatePaise: 120000 },
+  },
+  {
+    id: "S13",
+    summary: "Sep 2026, L4, supplier with no signed rate, billed ₹1,200",
+    line: { ...base, supplierId: "swiftfreight", grade: "L4", location: "Pune", serviceStart: "2026-09-01", serviceEnd: "2026-09-30", hours: 100, billedRatePaise: 120000 },
+  },
+  {
+    id: "S14",
+    summary: "Sep 2026, L4, location Other or not listed, billed ₹1,200",
+    line: { ...base, grade: "L4", location: "Other or not listed", serviceStart: "2026-09-01", serviceEnd: "2026-09-30", hours: 100, billedRatePaise: 120000 },
   },
 ];
 

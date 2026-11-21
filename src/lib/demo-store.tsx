@@ -292,17 +292,17 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           ...s.rulings,
           [conflictId]: { reading, reasoning: reasoning.trim(), by: a.by, at: a.at },
         };
+        // A ruling never verifies the conflict terms. Their review status stays as Procurement left it.
         const terms = { ...s.terms };
         for (const tid of conflict.termIds) {
           const t = terms[tid]!;
           terms[tid] = {
             ...t,
-            status: "Verified",
             history: [
               ...t.history,
               {
                 ...a,
-                action: `Resolved by Legal ruling: Reading ${reading}`,
+                action: `Legal ruling recorded: Reading ${reading}`,
                 reason: reasoning.trim(),
               },
             ],
